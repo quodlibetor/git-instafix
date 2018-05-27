@@ -1,0 +1,8 @@
+[package]
+name = "git-instafix"
+version = "0.1.0"
+authors = ["Brandon W Maister <quodlibetor@gmail.com>"]
+
+[dependencies]
+git2 = { version = "0.7.1", path = "../../src/git2-rs" }
+dialoguer = "0.1.0"
