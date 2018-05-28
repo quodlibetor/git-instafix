@@ -4,12 +4,22 @@ extern crate git2;
 use std::error::Error;
 use std::process::Command;
 
-use dialoguer::Select;
-use git2::{Branch, Commit, DiffStatsFormat, Repository};
+use dialoguer::{Confirmation, Select};
+use git2::{Branch, Commit, Diff, Repository};
+
+#[derive(Eq, PartialEq, Debug)]
+enum Changes {
+    Staged,
+    Unstaged,
+}
 
 fn main() {
     if let Err(e) = run() {
-        println!("Error running rebase: {}", e);
+        // An empty message means don't display any error message
+        let msg = e.to_string();
+        if !msg.is_empty() {
+            println!("Error running rebase: {}", e);
+        }
     }
 }
 
@@ -18,53 +28,65 @@ fn run() -> Result<(), Box<Error>> {
     match repo.head() {
         Ok(head) => {
             let head_tree = head.peel_to_tree()?;
-            let diffstat = repo.diff_tree_to_index(Some(&head_tree), None, None)?
-                .stats()?;
-            if diffstat.files_changed() == 0 {
-                println!("Nothing staged, stage something");
-                let workstat = repo.diff_tree_to_workdir(Some(&head_tree), None)?
-                    .stats()?;
-                println!(
-                    "{}",
-                    workstat
-                        .to_buf(DiffStatsFormat::FULL, 80)?
-                        .as_str()
-                        .expect("Couldn't format diff as utf-8")
-                );
-                return Err("staging is unimplemented".into());
-            } else {
-                println!("Staged changes:");
-                println!(
-                    "{}",
-                    diffstat
-                        .to_buf(DiffStatsFormat::FULL, 80)?.as_str()
-                        .expect("Couldn't format diff as utf-8")
-                )
-            }
             let head_branch = Branch::wrap(head);
-
-            let commit_to_amend =
-                select_commit_to_amend(&repo, head_branch.upstream().ok())?;
-            println!("selected: {} {}", &commit_to_amend.id().to_string()[0..10], commit_to_amend.summary().unwrap_or(""));
-
-            // create a fixup commit
-            let msg = format!("fixup! {}", commit_to_amend.id());
-            let sig = repo.signature()?;
-            let mut idx = repo.index()?;
-            let tree = repo.find_tree(idx.write_tree()?)?;
-            let head_commit = head_branch.get().peel_to_commit()?;
-            repo.commit(Some("HEAD"), &sig, &sig, &msg, &tree, &[&head_commit])?;
-
+            let diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
+            let commit_to_amend = create_fixup_commit(&repo, &head_branch, &diff)?;
+            println!(
+                "selected: {} {}",
+                &commit_to_amend.id().to_string()[0..10],
+                commit_to_amend.summary().unwrap_or("")
+            );
             // do the rebase
             let target_id = format!("{}~", commit_to_amend.id());
             Command::new("git")
                 .args(&["rebase", "--interactive", "--autosquash", &target_id])
                 .env("GIT_SEQUENCE_EDITOR", "true")
                 .spawn()?
-            .wait()?;
+                .wait()?;
         }
-        Err(e) => println!("head is not pointing at a valid branch: {}", e),
+        Err(e) => return Err(format!("head is not pointing at a valid branch: {}", e).into()),
     };
+    Ok(())
+}
+
+fn create_fixup_commit<'a>(
+    repo: &'a Repository,
+    head_branch: &'a Branch,
+    diff: &'a Diff,
+) -> Result<Commit<'a>, Box<Error>> {
+    let diffstat = diff.stats()?;
+    if diffstat.files_changed() == 0 {
+        print_diff(Changes::Unstaged)?;
+        if !Confirmation::new("Nothing staged, stage and commit everything?").interact()? {
+            return Err("".into());
+        }
+        let pathspecs: Vec<&str> = vec![];
+        let mut idx = repo.index()?;
+        idx.update_all(&pathspecs, None)?;
+        idx.write()?;
+        let commit_to_amend = select_commit_to_amend(&repo, head_branch.upstream().ok())?;
+        do_fixup_commit(&repo, &head_branch, &commit_to_amend)?;
+        Ok(commit_to_amend)
+    } else {
+        println!("Staged changes:");
+        print_diff(Changes::Staged)?;
+        let commit_to_amend = select_commit_to_amend(&repo, head_branch.upstream().ok())?;
+        do_fixup_commit(&repo, &head_branch, &commit_to_amend)?;
+        Ok(commit_to_amend)
+    }
+}
+
+fn do_fixup_commit<'a>(
+    repo: &'a Repository,
+    head_branch: &'a Branch,
+    commit_to_amend: &'a Commit,
+) -> Result<(), Box<Error>> {
+    let msg = format!("fixup! {}", commit_to_amend.id());
+    let sig = repo.signature()?;
+    let mut idx = repo.index()?;
+    let tree = repo.find_tree(idx.write_tree()?)?;
+    let head_commit = head_branch.get().peel_to_commit()?;
+    repo.commit(Some("HEAD"), &sig, &sig, &msg, &tree, &[&head_commit])?;
     Ok(())
 }
 
@@ -99,7 +121,20 @@ fn select_commit_to_amend<'a>(
         })
         .collect::<Vec<_>>();
     let commitmsgs = rev_aliases.iter().map(|s| s.as_ref()).collect::<Vec<_>>();
-    println!("Select a commit:");
+    println!("Select a commit to amend:");
     let selected = Select::new().items(&commitmsgs).default(0).interact();
     Ok(repo.find_commit(commits[selected?].id())?)
+}
+
+fn print_diff(kind: Changes) -> Result<(), Box<Error>> {
+    let mut args = vec!["diff", "--stat"];
+    if kind == Changes::Staged {
+        args.push("--cached");
+    }
+    let status = Command::new("git").args(&args).spawn()?.wait()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("git diff failed".into())
+    }
 }
