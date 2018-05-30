@@ -1,11 +1,23 @@
 extern crate dialoguer;
 extern crate git2;
+#[macro_use]
+extern crate structopt;
 
+use std::env;
 use std::error::Error;
 use std::process::Command;
 
 use dialoguer::{Confirmation, Select};
 use git2::{Branch, Commit, Diff, Repository};
+use structopt::StructOpt;
+
+/// Fix a commit in your history with your currently-staged changes
+#[derive(StructOpt, Debug)]
+struct Args {
+    /// Use `squash!`: change the commit message that you amend
+    #[structopt(short = "s", long = "squash")]
+    squash: bool,
+}
 
 #[derive(Eq, PartialEq, Debug)]
 enum Changes {
@@ -14,7 +26,11 @@ enum Changes {
 }
 
 fn main() {
-    if let Err(e) = run() {
+    let mut args = Args::from_args();
+    if env::args().take(1).next().unwrap().ends_with("squash") {
+        args.squash = true
+    }
+    if let Err(e) = run(args.squash) {
         // An empty message means don't display any error message
         let msg = e.to_string();
         if !msg.is_empty() {
@@ -23,14 +39,14 @@ fn main() {
     }
 }
 
-fn run() -> Result<(), Box<Error>> {
+fn run(squash: bool) -> Result<(), Box<Error>> {
     let repo = Repository::open(".")?;
     match repo.head() {
         Ok(head) => {
             let head_tree = head.peel_to_tree()?;
             let head_branch = Branch::wrap(head);
             let diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
-            let commit_to_amend = create_fixup_commit(&repo, &head_branch, &diff)?;
+            let commit_to_amend = create_fixup_commit(&repo, &head_branch, &diff, squash)?;
             println!(
                 "selected: {} {}",
                 &commit_to_amend.id().to_string()[0..10],
@@ -53,6 +69,7 @@ fn create_fixup_commit<'a>(
     repo: &'a Repository,
     head_branch: &'a Branch,
     diff: &'a Diff,
+    squash: bool,
 ) -> Result<Commit<'a>, Box<Error>> {
     let diffstat = diff.stats()?;
     if diffstat.files_changed() == 0 {
@@ -65,13 +82,13 @@ fn create_fixup_commit<'a>(
         idx.update_all(&pathspecs, None)?;
         idx.write()?;
         let commit_to_amend = select_commit_to_amend(&repo, head_branch.upstream().ok())?;
-        do_fixup_commit(&repo, &head_branch, &commit_to_amend)?;
+        do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
         Ok(commit_to_amend)
     } else {
         println!("Staged changes:");
         print_diff(Changes::Staged)?;
         let commit_to_amend = select_commit_to_amend(&repo, head_branch.upstream().ok())?;
-        do_fixup_commit(&repo, &head_branch, &commit_to_amend)?;
+        do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
         Ok(commit_to_amend)
     }
 }
@@ -80,8 +97,14 @@ fn do_fixup_commit<'a>(
     repo: &'a Repository,
     head_branch: &'a Branch,
     commit_to_amend: &'a Commit,
+    squash: bool,
 ) -> Result<(), Box<Error>> {
-    let msg = format!("fixup! {}", commit_to_amend.id());
+    let msg = if squash {
+        format!("squash! {}", commit_to_amend.id())
+    } else {
+        format!("fixup! {}", commit_to_amend.id())
+    };
+
     let sig = repo.signature()?;
     let mut idx = repo.index()?;
     let tree = repo.find_tree(idx.write_tree()?)?;
