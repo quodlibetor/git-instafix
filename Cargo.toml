@@ -4,6 +4,6 @@ version = "0.1.0"
 authors = ["Brandon W Maister <quodlibetor@gmail.com>"]
 
 [dependencies]
-git2 = { version = "0.7.1", path = "../../src/git2-rs" }
+git2 = "0.7.1"
 dialoguer = "0.1.0"
 structopt = "0.2.8"
