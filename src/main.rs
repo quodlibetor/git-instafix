@@ -1,3 +1,4 @@
+extern crate console;
 extern crate dialoguer;
 extern crate git2;
 #[macro_use]
@@ -10,6 +11,7 @@ use std::process::Command;
 use dialoguer::{Confirmation, Select};
 use git2::{Branch, Commit, Diff, Repository};
 use structopt::StructOpt;
+use console::style;
 
 /// Fix a commit in your history with your currently-staged changes
 #[derive(StructOpt, Debug)]
@@ -138,7 +140,7 @@ fn select_commit_to_amend<'a>(
         .map(|commit| {
             format!(
                 "{} {}",
-                &commit.id().to_string()[0..10],
+                &style(&commit.id().to_string()[0..10]).blue(),
                 commit.summary().unwrap_or("no commit summary")
             )
         })

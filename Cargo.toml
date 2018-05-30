@@ -7,3 +7,4 @@ authors = ["Brandon W Maister <quodlibetor@gmail.com>"]
 git2 = "0.7.1"
 dialoguer = "0.1.0"
 structopt = "0.2.8"
+console = "0.6.1"
