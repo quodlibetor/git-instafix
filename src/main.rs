@@ -36,7 +36,8 @@ When run with no arguments this will:
 
   * If you have no staged changes, ask if you'd like to stage all changes
   * Print a `diff --stat` of your currently staged changes
-  * Provide a list of commits from HEAD to HEAD's upstream
+  * Provide a list of commits from HEAD to HEAD's upstream,
+    or --max-commits, whichever is lesser
   * Fixup your selected commit with the staged changes
 ",
     raw(max_term_width = "100"),
@@ -47,6 +48,9 @@ struct Args {
     /// Use `squash!`: change the commit message that you amend
     #[structopt(short = "s", long = "squash")]
     squash: bool,
+    /// The maximum number of commits to show when looking for your merge point
+    #[structopt(short = "m", long = "max-commits", default_value = "15")]
+    max_commits: usize,
 }
 
 #[derive(Eq, PartialEq, Debug)]
@@ -60,7 +64,7 @@ fn main() {
     if env::args().next().unwrap().ends_with("squash") {
         args.squash = true
     }
-    if let Err(e) = run(args.squash) {
+    if let Err(e) = run(args.squash, args.max_commits) {
         // An empty message means don't display any error message
         let msg = e.to_string();
         if !msg.is_empty() {
@@ -69,14 +73,15 @@ fn main() {
     }
 }
 
-fn run(squash: bool) -> Result<(), Box<Error>> {
+fn run(squash: bool, max_commits: usize) -> Result<(), Box<Error>> {
     let repo = Repository::open(".")?;
     match repo.head() {
         Ok(head) => {
             let head_tree = head.peel_to_tree()?;
             let head_branch = Branch::wrap(head);
             let diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
-            let commit_to_amend = create_fixup_commit(&repo, &head_branch, &diff, squash)?;
+            let commit_to_amend =
+                create_fixup_commit(&repo, &head_branch, &diff, squash, max_commits)?;
             println!(
                 "selected: {} {}",
                 &commit_to_amend.id().to_string()[0..10],
@@ -100,6 +105,7 @@ fn create_fixup_commit<'a>(
     head_branch: &'a Branch,
     diff: &'a Diff,
     squash: bool,
+    max_commits: usize,
 ) -> Result<Commit<'a>, Box<Error>> {
     let diffstat = diff.stats()?;
     if diffstat.files_changed() == 0 {
@@ -111,13 +117,15 @@ fn create_fixup_commit<'a>(
         let mut idx = repo.index()?;
         idx.update_all(&pathspecs, None)?;
         idx.write()?;
-        let commit_to_amend = select_commit_to_amend(&repo, head_branch.upstream().ok())?;
+        let commit_to_amend =
+            select_commit_to_amend(&repo, head_branch.upstream().ok(), max_commits)?;
         do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
         Ok(commit_to_amend)
     } else {
         println!("Staged changes:");
         print_diff(Changes::Staged)?;
-        let commit_to_amend = select_commit_to_amend(&repo, head_branch.upstream().ok())?;
+        let commit_to_amend =
+            select_commit_to_amend(&repo, head_branch.upstream().ok(), max_commits)?;
         do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
         Ok(commit_to_amend)
     }
@@ -146,6 +154,7 @@ fn do_fixup_commit<'a>(
 fn select_commit_to_amend<'a>(
     repo: &'a Repository,
     upstream: Option<Branch<'a>>,
+    max_commits: usize,
 ) -> Result<Commit<'a>, Box<Error>> {
     let mut walker = repo.revwalk()?;
     walker.push_head()?;
@@ -154,12 +163,13 @@ fn select_commit_to_amend<'a>(
         walker
             .flat_map(|r| r)
             .take_while(|rev| *rev != upstream_oid)
+            .take(max_commits)
             .map(|rev| repo.find_commit(rev))
             .collect::<Result<Vec<_>, _>>()?
     } else {
         walker
             .flat_map(|r| r)
-            .take(15)
+            .take(max_commits)
             .map(|rev| repo.find_commit(rev))
             .collect::<Result<Vec<_>, _>>()?
     };
