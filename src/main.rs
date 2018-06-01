@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 extern crate console;
 extern crate dialoguer;
 extern crate git2;
@@ -23,13 +22,27 @@ use std::env;
 use std::error::Error;
 use std::process::Command;
 
+use console::style;
 use dialoguer::{Confirmation, Select};
 use git2::{Branch, Commit, Diff, Repository};
 use structopt::StructOpt;
-use console::style;
 
-/// Fix a commit in your history with your currently-staged changes
 #[derive(StructOpt, Debug)]
+#[structopt(
+    about = "Fix a commit in your history with your currently-staged changes",
+    long_about = "Fix a commit in your history with your currently-staged changes
+
+When run with no arguments this will:
+
+  * If you have no staged changes, ask if you'd like to stage all changes
+  * Print a `diff --stat` of your currently staged changes
+  * Provide a list of commits from HEAD to HEAD's upstream
+  * Fixup your selected commit with the staged changes
+",
+    raw(max_term_width = "100"),
+    raw(setting = "structopt::clap::AppSettings::UnifiedHelpMessage"),
+    raw(setting = "structopt::clap::AppSettings::ColoredHelp"),
+)]
 struct Args {
     /// Use `squash!`: change the commit message that you amend
     #[structopt(short = "s", long = "squash")]
@@ -44,7 +57,7 @@ enum Changes {
 
 fn main() {
     let mut args = Args::from_args();
-    if env::args().take(1).next().unwrap().ends_with("squash") {
+    if env::args().next().unwrap().ends_with("squash") {
         args.squash = true
     }
     if let Err(e) = run(args.squash) {
