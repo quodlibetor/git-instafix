@@ -1,11 +1,22 @@
 #!/bin/bash
 
+# outputs the temporary directory created
+mk_temp() {
+    # on old versions of macos mktemp is... annoying.
+    # -t is deprecated on all recent OSs
+    if [[ $TARGET = *darwin ]]; then
+        mktemp -t -d tmp-deploy-build.XXXXXXXXXX
+    else
+        mktemp -d
+    fi
+}
+
 mk_tarball() {
     # When cross-compiling, use the right `strip` tool on the binary.
     local gcc_prefix="$(gcc_prefix)"
     # Create a temporary dir that contains our staging area.
     # $tmpdir/$name is what eventually ends up as the deployed archive.
-    local tmpdir="$(mktemp -p /tmp -d tmp-deploy-build.XXXXXXXXXX)"
+    local tmpdir="$(mk_temp)"
     local name="${PROJECT_NAME}-${TRAVIS_TAG}-${TARGET}"
     local staging="$tmpdir/$name"
     # The deployment directory is where the final archive will reside.
