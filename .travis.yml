@@ -2,7 +2,7 @@ language: rust
 sudo: false
 env:
   global:
-    project_name: git-fixup
+    PROJECT_NAME: git-fixup
 install: ci/install.sh
 script: ci/build.sh
 addons:
@@ -11,32 +11,28 @@ addons:
       - zlib1g-dev
       - libcurl4-openssl-dev
       - libssl-dev
-      - cmake
-      - libelf-dev
-      - libdw-dev
-      - musl-tools
-      - pkgconf
 matrix:
   fast_finish: yes
   include:
-    - os: linux
+    - os: osx
       rust: stable
-      env: TARGET=i686-unknown-linux-musl
-    - os: linux
-      rust: stable
-      env: TARGET=x86_64-unknown-linux-musl
+      env: TARGET=x86_64-apple-darwin
+    - os: osx
+      rust: beta
+      env: TARGET=x86_64-apple-darwin
+    - os: osx
+      rust: nightly
+      env: TARGET=x86_64-apple-darwin
+
     - os: linux
       rust: stable
       env: TARGET=x86_64-unknown-linux-gnu
-    # - os: osx
-    #   rust: stable
-    #   env: TARGET=x86_64-apple-darwin
-    # - os: linux
-    #   rust: beta
-    #   env: TARGET=x86_64-unknown-linux-gnu
-    # - os: linux
-    #   rust: nightly
-    #   env: TARGET=x86_64-unknown-linux-gnu
+    - os: linux
+      rust: beta
+      env: TARGET=x86_64-unknown-linux-gnu
+    - os: linux
+      rust: nightly
+      env: TARGET=x86_64-unknown-linux-gnu
 before_deploy: ci/before_deploy.sh
 deploy:
   provider: releases
