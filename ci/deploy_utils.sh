@@ -5,7 +5,7 @@ mk_tarball() {
     local gcc_prefix="$(gcc_prefix)"
     # Create a temporary dir that contains our staging area.
     # $tmpdir/$name is what eventually ends up as the deployed archive.
-    local tmpdir="$(mktemp -d)"
+    local tmpdir="$(mktemp -p /tmp -d tmp-deploy-build.XXXXXXXXXX)"
     local name="${PROJECT_NAME}-${TRAVIS_TAG}-${TARGET}"
     local staging="$tmpdir/$name"
     # The deployment directory is where the final archive will reside.
