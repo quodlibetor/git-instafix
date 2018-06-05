@@ -15,12 +15,15 @@ matrix:
   fast_finish: yes
   include:
     - os: osx
+      osx_image: xcode6.4
       rust: stable
       env: TARGET=x86_64-apple-darwin
     - os: osx
+      osx_image: xcode6.4
       rust: beta
       env: TARGET=x86_64-apple-darwin
     - os: osx
+      osx_image: xcode6.4
       rust: nightly
       env: TARGET=x86_64-apple-darwin
 
