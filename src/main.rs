@@ -42,7 +42,7 @@ When run with no arguments this will:
 ",
     raw(max_term_width = "100"),
     raw(setting = "structopt::clap::AppSettings::UnifiedHelpMessage"),
-    raw(setting = "structopt::clap::AppSettings::ColoredHelp"),
+    raw(setting = "structopt::clap::AppSettings::ColoredHelp")
 )]
 struct Args {
     /// Use `squash!`: change the commit message that you amend
@@ -68,7 +68,7 @@ fn main() {
         // An empty message means don't display any error message
         let msg = e.to_string();
         if !msg.is_empty() {
-            println!("Error running rebase: {}", e);
+            println!("Error: {}", e);
         }
     }
 }
@@ -109,9 +109,14 @@ fn create_fixup_commit<'a>(
 ) -> Result<Commit<'a>, Box<Error>> {
     let diffstat = diff.stats()?;
     if diffstat.files_changed() == 0 {
-        print_diff(Changes::Unstaged)?;
-        if !Confirmation::new("Nothing staged, stage and commit everything?").interact()? {
-            return Err("".into());
+        let dirty_workdir_stats = repo.diff_index_to_workdir(None, None)?.stats()?;
+        if dirty_workdir_stats.files_changed() > 0 {
+            print_diff(Changes::Unstaged)?;
+            if !Confirmation::new("Nothing staged, stage and commit everything?").interact()? {
+                return Err("".into());
+            }
+        } else {
+            return Err("Nothing staged and no tracked files have any changes".into());
         }
         let pathspecs: Vec<&str> = vec![];
         let mut idx = repo.index()?;
