@@ -13,6 +13,10 @@ mk_artifacts() {
 }
 
 main() {
+    if [[ $TRAVIS_RUST_VERSION != stable ]]; then
+        echo "Not building non-stable for deploy"
+        return
+    fi
     mk_artifacts
     mk_tarball
 }
