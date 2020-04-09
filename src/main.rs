@@ -18,8 +18,10 @@ use std::process::Command;
 
 use console::style;
 use dialoguer::{Confirmation, Select};
-use git2::{Branch, Commit, Diff, Repository};
+use git2::{Branch, Commit, Diff, Object, ObjectType, Oid, Repository};
 use structopt::StructOpt;
+
+const UPSTREAM_VAR: &str = "GIT_INSTAFIX_UPSTREAM";
 
 #[derive(StructOpt, Debug)]
 #[structopt(
@@ -69,34 +71,71 @@ fn main() {
 
 fn run(squash: bool, max_commits: usize) -> Result<(), Box<dyn Error>> {
     let repo = Repository::open(".")?;
-    match repo.head() {
-        Ok(head) => {
-            let head_tree = head.peel_to_tree()?;
-            let head_branch = Branch::wrap(head);
-            let diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
-            let commit_to_amend =
-                create_fixup_commit(&repo, &head_branch, &diff, squash, max_commits)?;
-            println!(
-                "selected: {} {}",
-                &commit_to_amend.id().to_string()[0..10],
-                commit_to_amend.summary().unwrap_or("")
-            );
-            // do the rebase
-            let target_id = format!("{}~", commit_to_amend.id());
-            Command::new("git")
-                .args(&["rebase", "--interactive", "--autosquash", &target_id])
-                .env("GIT_SEQUENCE_EDITOR", "true")
-                .spawn()?
-                .wait()?;
-        }
-        Err(e) => return Err(format!("head is not pointing at a valid branch: {}", e).into()),
-    };
+    let head = repo
+        .head()
+        .map_err(|e| format!("HEAD is not pointing at a valid branch: {}", e))?;
+    let head_tree = head.peel_to_tree()?;
+    let head_branch = Branch::wrap(head);
+    let diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
+    let upstream = get_upstream(&repo, &head_branch)?;
+    let commit_to_amend =
+        create_fixup_commit(&repo, &head_branch, &upstream, &diff, squash, max_commits)?;
+    println!(
+        "selected: {} {}",
+        &commit_to_amend.id().to_string()[0..10],
+        commit_to_amend.summary().unwrap_or("")
+    );
+    // do the rebase
+    let target_id = format!("{}~", commit_to_amend.id());
+    Command::new("git")
+        .args(&["rebase", "--interactive", "--autosquash", &target_id])
+        .env("GIT_SEQUENCE_EDITOR", "true")
+        .spawn()?
+        .wait()?;
     Ok(())
+}
+
+fn get_upstream<'a>(
+    repo: &'a Repository,
+    head_branch: &'a Branch,
+) -> Result<Object<'a>, Box<dyn Error>> {
+    let upstream = if let Ok(upstream_name) = env::var(UPSTREAM_VAR) {
+        let branch = repo
+            .branches(None)?
+            .filter_map(|branch| branch.ok().map(|(b, _type)| b))
+            .find(|b| {
+                b.name()
+                    .map(|n| n.expect("valid utf8 branchname") == &upstream_name)
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| format!("cannot find branch with name {:?}", upstream_name))?;
+        let result = Command::new("git")
+            .args(&[
+                "merge-base",
+                head_branch.name().unwrap().unwrap(),
+                branch.name().unwrap().unwrap(),
+            ])
+            .output()?
+            .stdout;
+        let oid = Oid::from_str(std::str::from_utf8(&result)?.trim())?;
+        let commit = repo.find_object(oid, None).unwrap();
+
+        commit
+    } else {
+        head_branch
+            .upstream()
+            .unwrap()
+            .into_reference()
+            .peel(ObjectType::Commit)?
+    };
+
+    Ok(upstream)
 }
 
 fn create_fixup_commit<'a>(
     repo: &'a Repository,
     head_branch: &'a Branch,
+    upstream: &'a Object,
     diff: &'a Diff,
     squash: bool,
     max_commits: usize,
@@ -120,7 +159,7 @@ fn create_fixup_commit<'a>(
         println!("Staged changes:");
         print_diff(Changes::Staged)?;
     }
-    let commit_to_amend = select_commit_to_amend(&repo, head_branch.upstream().ok(), max_commits)?;
+    let commit_to_amend = select_commit_to_amend(&repo, Some(upstream), max_commits)?;
     do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
     Ok(commit_to_amend)
 }
@@ -147,13 +186,13 @@ fn do_fixup_commit<'a>(
 
 fn select_commit_to_amend<'a>(
     repo: &'a Repository,
-    upstream: Option<Branch<'a>>,
+    upstream: Option<&Object<'a>>,
     max_commits: usize,
 ) -> Result<Commit<'a>, Box<dyn Error>> {
     let mut walker = repo.revwalk()?;
     walker.push_head()?;
     let commits = if let Some(upstream) = upstream {
-        let upstream_oid = upstream.get().target().expect("No upstream target");
+        let upstream_oid = upstream.id();
         walker
             .flat_map(|r| r)
             .take_while(|rev| *rev != upstream_oid)
