@@ -73,7 +73,7 @@ fn main() {
     }
 }
 
-fn run(squash: bool, max_commits: usize) -> Result<(), Box<Error>> {
+fn run(squash: bool, max_commits: usize) -> Result<(), Box<dyn Error>> {
     let repo = Repository::open(".")?;
     match repo.head() {
         Ok(head) => {
@@ -106,7 +106,7 @@ fn create_fixup_commit<'a>(
     diff: &'a Diff,
     squash: bool,
     max_commits: usize,
-) -> Result<Commit<'a>, Box<Error>> {
+) -> Result<Commit<'a>, Box<dyn Error>> {
     let diffstat = diff.stats()?;
     if diffstat.files_changed() == 0 {
         let dirty_workdir_stats = repo.diff_index_to_workdir(None, None)?.stats()?;
@@ -141,7 +141,7 @@ fn do_fixup_commit<'a>(
     head_branch: &'a Branch,
     commit_to_amend: &'a Commit,
     squash: bool,
-) -> Result<(), Box<Error>> {
+) -> Result<(), Box<dyn Error>> {
     let msg = if squash {
         format!("squash! {}", commit_to_amend.id())
     } else {
@@ -160,7 +160,7 @@ fn select_commit_to_amend<'a>(
     repo: &'a Repository,
     upstream: Option<Branch<'a>>,
     max_commits: usize,
-) -> Result<Commit<'a>, Box<Error>> {
+) -> Result<Commit<'a>, Box<dyn Error>> {
     let mut walker = repo.revwalk()?;
     walker.push_head()?;
     let commits = if let Some(upstream) = upstream {
@@ -194,7 +194,7 @@ fn select_commit_to_amend<'a>(
     Ok(repo.find_commit(commits[selected?].id())?)
 }
 
-fn print_diff(kind: Changes) -> Result<(), Box<Error>> {
+fn print_diff(kind: Changes) -> Result<(), Box<dyn Error>> {
     let mut args = vec!["diff", "--stat"];
     if kind == Changes::Staged {
         args.push("--cached");
