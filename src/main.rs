@@ -116,18 +116,13 @@ fn create_fixup_commit<'a>(
         let mut idx = repo.index()?;
         idx.update_all(&pathspecs, None)?;
         idx.write()?;
-        let commit_to_amend =
-            select_commit_to_amend(&repo, head_branch.upstream().ok(), max_commits)?;
-        do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
-        Ok(commit_to_amend)
     } else {
         println!("Staged changes:");
         print_diff(Changes::Staged)?;
-        let commit_to_amend =
-            select_commit_to_amend(&repo, head_branch.upstream().ok(), max_commits)?;
-        do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
-        Ok(commit_to_amend)
     }
+    let commit_to_amend = select_commit_to_amend(&repo, head_branch.upstream().ok(), max_commits)?;
+    do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
+    Ok(commit_to_amend)
 }
 
 fn do_fixup_commit<'a>(
