@@ -12,12 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-extern crate console;
-extern crate dialoguer;
-extern crate git2;
-#[macro_use]
-extern crate structopt;
-
 use std::env;
 use std::error::Error;
 use std::process::Command;
