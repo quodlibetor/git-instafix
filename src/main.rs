@@ -81,7 +81,7 @@ fn run(squash: bool, max_commits: usize) -> Result<(), Box<dyn Error>> {
     let diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
     let upstream = get_upstream(&repo, &head_branch)?;
     let commit_to_amend =
-        create_fixup_commit(&repo, &head_branch, &upstream, &diff, squash, max_commits)?;
+        create_fixup_commit(&repo, &head_branch, upstream, &diff, squash, max_commits)?;
     println!(
         "selected: {} {}",
         &commit_to_amend.id().to_string()[0..10],
@@ -100,7 +100,7 @@ fn run(squash: bool, max_commits: usize) -> Result<(), Box<dyn Error>> {
 fn get_upstream<'a>(
     repo: &'a Repository,
     head_branch: &'a Branch,
-) -> Result<Object<'a>, Box<dyn Error>> {
+) -> Result<Option<Object<'a>>, Box<dyn Error>> {
     let upstream = if let Ok(upstream_name) = env::var(UPSTREAM_VAR) {
         let branch = repo
             .branches(None)?
@@ -124,20 +124,20 @@ fn get_upstream<'a>(
 
         commit
     } else {
-        head_branch
-            .upstream()
-            .unwrap()
-            .into_reference()
-            .peel(ObjectType::Commit)?
+        if let Ok(upstream) = head_branch.upstream() {
+            upstream.into_reference().peel(ObjectType::Commit)?
+        } else {
+            return Ok(None);
+        }
     };
 
-    Ok(upstream)
+    Ok(Some(upstream))
 }
 
 fn create_fixup_commit<'a>(
     repo: &'a Repository,
     head_branch: &'a Branch,
-    upstream: &'a Object,
+    upstream: Option<Object<'a>>,
     diff: &'a Diff,
     squash: bool,
     max_commits: usize,
@@ -164,7 +164,7 @@ fn create_fixup_commit<'a>(
         println!("Staged changes:");
         print_diff(Changes::Staged)?;
     }
-    let commit_to_amend = select_commit_to_amend(&repo, Some(upstream), max_commits)?;
+    let commit_to_amend = select_commit_to_amend(&repo, upstream, max_commits)?;
     do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
     Ok(commit_to_amend)
 }
@@ -191,12 +191,12 @@ fn do_fixup_commit<'a>(
 
 fn select_commit_to_amend<'a>(
     repo: &'a Repository,
-    upstream: Option<&Object<'a>>,
+    upstream: Option<Object<'a>>,
     max_commits: usize,
 ) -> Result<Commit<'a>, Box<dyn Error>> {
     let mut walker = repo.revwalk()?;
     walker.push_head()?;
-    let commits = if let Some(upstream) = upstream {
+    let commits = if let Some(upstream) = upstream.as_ref() {
         let upstream_oid = upstream.id();
         walker
             .flat_map(|r| r)
@@ -221,7 +221,11 @@ fn select_commit_to_amend<'a>(
             )
         })
         .collect::<Vec<_>>();
-    eprintln!("Select a commit to amend:");
+    if upstream.is_none() {
+        eprintln!("Select a commit to amend (no upstream for HEAD):");
+    } else {
+        eprintln!("Select a commit to amend:");
+    }
     let selected = Select::new().items(&rev_aliases).default(0).interact();
     Ok(repo.find_commit(commits[selected?].id())?)
 }
