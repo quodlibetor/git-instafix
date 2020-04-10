@@ -2,7 +2,7 @@
 
 # package the build artifacts
 
-set -ex
+set -xeuo pipefail
 
 . "$(dirname "$0")/utils.sh"
 . "$(dirname "$0")/deploy_utils.sh"
@@ -13,10 +13,9 @@ mk_artifacts() {
 }
 
 main() {
-    if [[ $TRAVIS_RUST_VERSION != stable ]]; then
-        echo "Not building non-stable for deploy"
-        return
-    fi
+    echo "env: $(env)" >&2
+    export RELEASE
+    RELEASE=$(basename "$REF")
     mk_artifacts
     mk_tarball
 }
