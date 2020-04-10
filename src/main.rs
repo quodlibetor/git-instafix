@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::process::Command;
@@ -211,12 +212,32 @@ fn select_commit_to_amend<'a>(
             .map(|rev| repo.find_commit(rev))
             .collect::<Result<Vec<_>, _>>()?
     };
+    let branches: HashMap<Oid, String> = repo
+        .branches(None)?
+        .filter_map(|b| {
+            b.ok().and_then(|(b, _type)| {
+                let name: Option<String> = b.name().ok().and_then(|n| n.map(|n| n.to_owned()));
+                let oid = b.into_reference().resolve().ok().and_then(|r| r.target());
+                name.and_then(|name| oid.map(|oid| (oid, name)))
+            })
+        })
+        .collect();
     let rev_aliases = commits
         .iter()
-        .map(|commit| {
+        .enumerate()
+        .map(|(i, commit)| {
+            let bname = if i > 0 {
+                branches
+                    .get(&commit.id())
+                    .map(|n| format!("({}) ", n))
+                    .unwrap_or_else(String::new)
+            } else {
+                String::new()
+            };
             format!(
-                "{} {}",
+                "{} {}{}",
                 &style(&commit.id().to_string()[0..10]).blue(),
+                style(bname).green(),
                 commit.summary().unwrap_or("no commit summary")
             )
         })
