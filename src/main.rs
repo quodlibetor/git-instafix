@@ -32,13 +32,15 @@ When run with no arguments this will:
 
   * If you have no staged changes, ask if you'd like to stage all changes
   * Print a `diff --stat` of your currently staged changes
-  * Provide a list of commits from HEAD to HEAD's upstream,
-    or --max-commits, whichever is lesser
+  * Provide a list of commits to fixup or amend going back to:
+      * The merge-base of HEAD and the environment var GIT_INSTAFIX_UPSTREAM
+        (if it is set)
+      * HEAD's upstream
   * Fixup your selected commit with the staged changes
 ",
-    raw(max_term_width = "100"),
-    raw(setting = "structopt::clap::AppSettings::UnifiedHelpMessage"),
-    raw(setting = "structopt::clap::AppSettings::ColoredHelp")
+    max_term_width = 100,
+    setting = structopt::clap::AppSettings::UnifiedHelpMessage,
+    setting = structopt::clap::AppSettings::ColoredHelp,
 )]
 struct Args {
     /// Use `squash!`: change the commit message that you amend
@@ -145,7 +147,10 @@ fn create_fixup_commit<'a>(
         let dirty_workdir_stats = repo.diff_index_to_workdir(None, None)?.stats()?;
         if dirty_workdir_stats.files_changed() > 0 {
             print_diff(Changes::Unstaged)?;
-            if !Confirmation::new("Nothing staged, stage and commit everything?").interact()? {
+            if !Confirmation::new()
+                .with_text("Nothing staged, stage and commit everything?")
+                .interact()?
+            {
                 return Err("".into());
             }
         } else {
@@ -216,9 +221,8 @@ fn select_commit_to_amend<'a>(
             )
         })
         .collect::<Vec<_>>();
-    let commitmsgs = rev_aliases.iter().map(|s| s.as_ref()).collect::<Vec<_>>();
-    println!("Select a commit to amend:");
-    let selected = Select::new().items(&commitmsgs).default(0).interact();
+    eprintln!("Select a commit to amend:");
+    let selected = Select::new().items(&rev_aliases).default(0).interact();
     Ok(repo.find_commit(commits[selected?].id())?)
 }
 
