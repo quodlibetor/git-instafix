@@ -2,20 +2,39 @@
 
 Quickly fix up an old commit using your currently-staged changes.
 
-[![asciicast](./static/asciicast.png)](https://asciinema.org/a/SYKj4ztmMJ52cSmGxSF9hHjtl?autoplay=1&t=3)
+![usage](./static/full-workflow-simple.gif)
 
 ## Usage
 
 After installation, just run `git fixup` or `git squash` to perform the related
 actions.
 
-Running `git fixup` will check if you have any staged changes (if not it will
-prompt you to stage all changes) and then present you with a list of commits
-from your current work point (HEAD) to HEAD's upstream. For example, if you are
-on `master` and its is `origin/master`, `git fixup` will show all commits
-between `master` and `origin/master`. In general this is just what you want,
-since you probably shouldn't be editing commits that other people are working
-off of.
+By default, `git fixup` checks for staged changes and offers to amend an old
+commit.
+
+Given a repo that looks like:
+
+![linear-repo](./static/00-initial-state.png)
+
+Running `git fixup` will allow you to edit an old commit:
+
+![linear-repo-fixup](./static/01-selector.gif)
+
+The default behavior will check if your current HEAD commit has an `upstream`
+branch and show you only the commits between where you currently are and that
+commit. If there is no upstream for HEAD you will see the behavior above.
+
+If you're using a pull-request workflow (e.g. github) you will often have repos that look more like this:
+
+![full-repo](./static/20-initial-full-repo.png)
+
+You can set `GIT_INSTAFIX_UPSTREAM` to a branch name and `git fixup` will only
+show changes between HEAD and the merge-base:
+
+![full-repo-fixup](./static/21-with-upstream.gif)
+
+In general this is just what you want, since you probably shouldn't be editing
+commits that other people are working off of.
 
 After you select the commit to edit, `git fixup` will apply your staged changes
 to that commit without any further prompting or work from you.
