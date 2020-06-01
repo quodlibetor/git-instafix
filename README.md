@@ -45,6 +45,8 @@ asking you which change to amend, but after you have selected the commit to git
 will give you a chance to edit the commit message before changing the tree at
 that point.
 
+test
+
 ## Installation
 
 If you're on macos or linux and using homebrew you should be able to do:
