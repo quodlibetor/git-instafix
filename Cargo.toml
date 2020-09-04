@@ -5,6 +5,7 @@ authors = ["Brandon W Maister <quodlibetor@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+anyhow = "1.0"
 git2 = { version = "0.13.0", default_features = false }
 dialoguer = "0.5.0"
 structopt = "0.3"

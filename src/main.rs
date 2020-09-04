@@ -17,6 +17,7 @@ use std::env;
 use std::error::Error;
 use std::process::Command;
 
+use anyhow::bail;
 use console::style;
 use dialoguer::{Confirmation, Select};
 use git2::{Branch, Commit, Diff, Object, ObjectType, Oid, Repository};
@@ -194,7 +195,7 @@ fn select_commit_to_amend<'a>(
     repo: &'a Repository,
     upstream: Option<Object<'a>>,
     max_commits: usize,
-) -> Result<Commit<'a>, Box<dyn Error>> {
+) -> Result<Commit<'a>, anyhow::Error> {
     let mut walker = repo.revwalk()?;
     walker.push_head()?;
     let commits = if let Some(upstream) = upstream.as_ref() {
@@ -212,6 +213,13 @@ fn select_commit_to_amend<'a>(
             .map(|rev| repo.find_commit(rev))
             .collect::<Result<Vec<_>, _>>()?
     };
+    if commits.len() == 0 {
+        bail!(
+            "No commits between {} and {:?}",
+            format_ref(&repo.head()?)?,
+            upstream.map(|u| u.id()).unwrap()
+        );
+    }
     let branches: HashMap<Oid, String> = repo
         .branches(None)?
         .filter_map(|b| {
@@ -249,6 +257,12 @@ fn select_commit_to_amend<'a>(
     }
     let selected = Select::new().items(&rev_aliases).default(0).interact();
     Ok(repo.find_commit(commits[selected?].id())?)
+}
+
+fn format_ref(rf: &git2::Reference<'_>) -> Result<String, anyhow::Error> {
+    let shorthand = rf.shorthand().unwrap_or("<unnamed>");
+    let sha = rf.peel_to_commit()?.id().to_string();
+    Ok(format!("{} ({})", shorthand, &sha[..10]))
 }
 
 fn print_diff(kind: Changes) -> Result<(), Box<dyn Error>> {
