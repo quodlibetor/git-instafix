@@ -19,7 +19,7 @@ use std::process::Command;
 
 use anyhow::bail;
 use console::style;
-use dialoguer::{Confirmation, Select};
+use dialoguer::{Confirm, Select};
 use git2::{Branch, Commit, Diff, Object, ObjectType, Oid, Repository};
 use structopt::StructOpt;
 
@@ -149,8 +149,8 @@ fn create_fixup_commit<'a>(
         let dirty_workdir_stats = repo.diff_index_to_workdir(None, None)?.stats()?;
         if dirty_workdir_stats.files_changed() > 0 {
             print_diff(Changes::Unstaged)?;
-            if !Confirmation::new()
-                .with_text("Nothing staged, stage and commit everything?")
+            if !Confirm::new()
+                .with_prompt("Nothing staged, stage and commit everything?")
                 .interact()?
             {
                 return Err("".into());
