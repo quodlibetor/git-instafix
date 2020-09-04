@@ -17,8 +17,9 @@ use std::env;
 use std::error::Error;
 use std::process::Command;
 
+use anyhow::bail;
 use console::style;
-use dialoguer::{Confirmation, Select};
+use dialoguer::{Confirm, Select};
 use git2::{Branch, Commit, Diff, Object, ObjectType, Oid, Repository};
 use structopt::StructOpt;
 
@@ -50,6 +51,10 @@ struct Args {
     /// The maximum number of commits to show when looking for your merge point
     #[structopt(short = "m", long = "max-commits", default_value = "15")]
     max_commits: usize,
+
+    /// Specify a commit to ammend by the subject line of the commit
+    #[structopt(short = "P", long)]
+    commit_message_pattern: Option<String>,
 }
 
 #[derive(Eq, PartialEq, Debug)]
@@ -63,16 +68,21 @@ fn main() {
     if env::args().next().unwrap().ends_with("squash") {
         args.squash = true
     }
-    if let Err(e) = run(args.squash, args.max_commits) {
+    if let Err(e) = run(args.squash, args.max_commits, args.commit_message_pattern) {
         // An empty message means don't display any error message
         let msg = e.to_string();
         if !msg.is_empty() {
             println!("Error: {}", e);
         }
+        std::process::exit(1);
     }
 }
 
-fn run(squash: bool, max_commits: usize) -> Result<(), Box<dyn Error>> {
+fn run(
+    squash: bool,
+    max_commits: usize,
+    message_pattern: Option<String>,
+) -> Result<(), Box<dyn Error>> {
     let repo = Repository::open(".")?;
     let head = repo
         .head()
@@ -81,8 +91,15 @@ fn run(squash: bool, max_commits: usize) -> Result<(), Box<dyn Error>> {
     let head_branch = Branch::wrap(head);
     let diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
     let upstream = get_upstream(&repo, &head_branch)?;
-    let commit_to_amend =
-        create_fixup_commit(&repo, &head_branch, upstream, &diff, squash, max_commits)?;
+    let commit_to_amend = create_fixup_commit(
+        &repo,
+        &head_branch,
+        upstream,
+        &diff,
+        squash,
+        max_commits,
+        &message_pattern,
+    )?;
     println!(
         "selected: {} {}",
         &commit_to_amend.id().to_string()[0..10],
@@ -112,18 +129,7 @@ fn get_upstream<'a>(
                     .unwrap_or(false)
             })
             .ok_or_else(|| format!("cannot find branch with name {:?}", upstream_name))?;
-        let result = Command::new("git")
-            .args(&[
-                "merge-base",
-                head_branch.name().unwrap().unwrap(),
-                branch.name().unwrap().unwrap(),
-            ])
-            .output()?
-            .stdout;
-        let oid = Oid::from_str(std::str::from_utf8(&result)?.trim())?;
-        let commit = repo.find_object(oid, None).unwrap();
-
-        commit
+        branch.into_reference().peel(ObjectType::Commit)?
     } else {
         if let Ok(upstream) = head_branch.upstream() {
             upstream.into_reference().peel(ObjectType::Commit)?
@@ -132,7 +138,18 @@ fn get_upstream<'a>(
         }
     };
 
-    Ok(Some(upstream))
+    let result = Command::new("git")
+        .args(&[
+            "merge-base",
+            head_branch.name().unwrap().unwrap(),
+            &upstream.id().to_string(),
+        ])
+        .output()?
+        .stdout;
+    let oid = Oid::from_str(std::str::from_utf8(&result)?.trim())?;
+    let commit = repo.find_object(oid, None).unwrap();
+
+    Ok(Some(commit))
 }
 
 fn create_fixup_commit<'a>(
@@ -142,14 +159,15 @@ fn create_fixup_commit<'a>(
     diff: &'a Diff,
     squash: bool,
     max_commits: usize,
+    message_pattern: &Option<String>,
 ) -> Result<Commit<'a>, Box<dyn Error>> {
     let diffstat = diff.stats()?;
     if diffstat.files_changed() == 0 {
         let dirty_workdir_stats = repo.diff_index_to_workdir(None, None)?.stats()?;
         if dirty_workdir_stats.files_changed() > 0 {
             print_diff(Changes::Unstaged)?;
-            if !Confirmation::new()
-                .with_text("Nothing staged, stage and commit everything?")
+            if !Confirm::new()
+                .with_prompt("Nothing staged, stage and commit everything?")
                 .interact()?
             {
                 return Err("".into());
@@ -165,7 +183,7 @@ fn create_fixup_commit<'a>(
         println!("Staged changes:");
         print_diff(Changes::Staged)?;
     }
-    let commit_to_amend = select_commit_to_amend(&repo, upstream, max_commits)?;
+    let commit_to_amend = select_commit_to_amend(&repo, upstream, max_commits, message_pattern)?;
     do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
     Ok(commit_to_amend)
 }
@@ -194,7 +212,8 @@ fn select_commit_to_amend<'a>(
     repo: &'a Repository,
     upstream: Option<Object<'a>>,
     max_commits: usize,
-) -> Result<Commit<'a>, Box<dyn Error>> {
+    message_pattern: &Option<String>,
+) -> Result<Commit<'a>, anyhow::Error> {
     let mut walker = repo.revwalk()?;
     walker.push_head()?;
     let commits = if let Some(upstream) = upstream.as_ref() {
@@ -212,6 +231,13 @@ fn select_commit_to_amend<'a>(
             .map(|rev| repo.find_commit(rev))
             .collect::<Result<Vec<_>, _>>()?
     };
+    if commits.len() == 0 {
+        bail!(
+            "No commits between {} and {:?}",
+            format_ref(&repo.head()?)?,
+            upstream.map(|u| u.id()).unwrap()
+        );
+    }
     let branches: HashMap<Oid, String> = repo
         .branches(None)?
         .filter_map(|b| {
@@ -222,33 +248,55 @@ fn select_commit_to_amend<'a>(
             })
         })
         .collect();
-    let rev_aliases = commits
-        .iter()
-        .enumerate()
-        .map(|(i, commit)| {
-            let bname = if i > 0 {
-                branches
-                    .get(&commit.id())
-                    .map(|n| format!("({}) ", n))
-                    .unwrap_or_else(String::new)
-            } else {
-                String::new()
-            };
-            format!(
-                "{} {}{}",
-                &style(&commit.id().to_string()[0..10]).blue(),
-                style(bname).green(),
-                commit.summary().unwrap_or("no commit summary")
-            )
-        })
-        .collect::<Vec<_>>();
-    if upstream.is_none() {
-        eprintln!("Select a commit to amend (no upstream for HEAD):");
+    if let Some(message_pattern) = message_pattern.as_ref() {
+        eprintln!(
+            "trying to find message_pattern in {} commits",
+            commits.len()
+        );
+        commits
+            .into_iter()
+            .find(|commit| {
+                commit
+                    .summary()
+                    .map(|s| s.contains(message_pattern))
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| anyhow::anyhow!("No commit contains the pattern in its summary"))
     } else {
-        eprintln!("Select a commit to amend:");
+        let rev_aliases = commits
+            .iter()
+            .enumerate()
+            .map(|(i, commit)| {
+                let bname = if i > 0 {
+                    branches
+                        .get(&commit.id())
+                        .map(|n| format!("({}) ", n))
+                        .unwrap_or_else(String::new)
+                } else {
+                    String::new()
+                };
+                format!(
+                    "{} {}{}",
+                    &style(&commit.id().to_string()[0..10]).blue(),
+                    style(bname).green(),
+                    commit.summary().unwrap_or("no commit summary")
+                )
+            })
+            .collect::<Vec<_>>();
+        if upstream.is_none() {
+            eprintln!("Select a commit to amend (no upstream for HEAD):");
+        } else {
+            eprintln!("Select a commit to amend:");
+        }
+        let selected = Select::new().items(&rev_aliases).default(0).interact();
+        Ok(repo.find_commit(commits[selected?].id())?)
     }
-    let selected = Select::new().items(&rev_aliases).default(0).interact();
-    Ok(repo.find_commit(commits[selected?].id())?)
+}
+
+fn format_ref(rf: &git2::Reference<'_>) -> Result<String, anyhow::Error> {
+    let shorthand = rf.shorthand().unwrap_or("<unnamed>");
+    let sha = rf.peel_to_commit()?.id().to_string();
+    Ok(format!("{} ({})", shorthand, &sha[..10]))
 }
 
 fn print_diff(kind: Changes) -> Result<(), Box<dyn Error>> {
