@@ -74,6 +74,7 @@ fn main() {
         if !msg.is_empty() {
             println!("Error: {}", e);
         }
+        std::process::exit(1);
     }
 }
 
@@ -128,18 +129,7 @@ fn get_upstream<'a>(
                     .unwrap_or(false)
             })
             .ok_or_else(|| format!("cannot find branch with name {:?}", upstream_name))?;
-        let result = Command::new("git")
-            .args(&[
-                "merge-base",
-                head_branch.name().unwrap().unwrap(),
-                branch.name().unwrap().unwrap(),
-            ])
-            .output()?
-            .stdout;
-        let oid = Oid::from_str(std::str::from_utf8(&result)?.trim())?;
-        let commit = repo.find_object(oid, None).unwrap();
-
-        commit
+        branch.into_reference().peel(ObjectType::Commit)?
     } else {
         if let Ok(upstream) = head_branch.upstream() {
             upstream.into_reference().peel(ObjectType::Commit)?
@@ -148,7 +138,18 @@ fn get_upstream<'a>(
         }
     };
 
-    Ok(Some(upstream))
+    let result = Command::new("git")
+        .args(&[
+            "merge-base",
+            head_branch.name().unwrap().unwrap(),
+            &upstream.id().to_string(),
+        ])
+        .output()?
+        .stdout;
+    let oid = Oid::from_str(std::str::from_utf8(&result)?.trim())?;
+    let commit = repo.find_object(oid, None).unwrap();
+
+    Ok(Some(commit))
 }
 
 fn create_fixup_commit<'a>(

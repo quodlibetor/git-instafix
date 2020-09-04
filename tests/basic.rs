@@ -70,6 +70,66 @@ new
         err
     );
 }
+
+#[test]
+fn test_no_commit_in_range() {
+    let td = assert_fs::TempDir::new().unwrap();
+    git_init(&td);
+
+    for n in &["a", "b", "c", "d"] {
+        git_file_commit(n, &td);
+    }
+    git(&["checkout", "-b", "changes", ":/c"], &td);
+    git(&["branch", "-u", "main"], &td);
+    for n in &["e", "f", "g"] {
+        git_file_commit(&n, &td);
+    }
+
+    let out = git_log(&td);
+    assert_eq!(
+        out,
+        "\
+* g HEAD -> changes
+* f
+* e
+| * d main
+|/
+* c
+* b
+* a
+",
+        "log:\n{}",
+        out
+    );
+
+    td.child("new").touch().unwrap();
+    git(&["add", "new"], &td);
+
+    let assertion = fixup(&td).args(&["-P", "b"]).assert().failure();
+    let out = string(assertion.get_output().stdout.clone());
+    assert!(out.contains("No commit contains the pattern"), out);
+
+    fixup(&td).args(&["-P", "e"]).assert().success();
+
+    let shown = git_out(
+        &["diff-tree", "--no-commit-id", "--name-only", "-r", ":/e"],
+        &td,
+    );
+    let files = string(shown.stdout);
+    let err = string(shown.stderr);
+
+    assert_eq!(
+        files,
+        "\
+file_e
+new
+",
+        "out: {} err: {}",
+        files,
+        err
+    );
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Helpers
 
