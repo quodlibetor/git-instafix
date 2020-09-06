@@ -138,16 +138,14 @@ fn get_upstream<'a>(
         }
     };
 
-    let result = Command::new("git")
-        .args(&[
-            "merge-base",
-            head_branch.name().unwrap().unwrap(),
-            &upstream.id().to_string(),
-        ])
-        .output()?
-        .stdout;
-    let oid = Oid::from_str(std::str::from_utf8(&result)?.trim())?;
-    let commit = repo.find_object(oid, None).unwrap();
+    let mb = repo.merge_base(
+        head_branch
+            .get()
+            .target()
+            .expect("all branches should ahve a target"),
+        upstream.id(),
+    )?;
+    let commit = repo.find_object(mb, None).unwrap();
 
     Ok(Some(commit))
 }

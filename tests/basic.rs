@@ -72,6 +72,52 @@ new
 }
 
 #[test]
+fn simple_straightline_commits() {
+    let td = assert_fs::TempDir::new().unwrap();
+    git_init(&td);
+
+    for n in &["a", "b"] {
+        git_file_commit(n, &td);
+    }
+    git(&["checkout", "-b", "changes"], &td);
+    git(&["branch", "-u", "main"], &td);
+    for n in &["target", "d"] {
+        git_file_commit(&n, &td);
+    }
+
+    let log = git_log(&td);
+    assert_eq!(
+        log,
+        "\
+* d HEAD -> changes
+* target
+* b main
+* a
+",
+        "log:\n{}",
+        log
+    );
+
+    td.child("new").touch().unwrap();
+    git(&["add", "new"], &td);
+
+    fixup(&td).args(&["-P", "target"]).assert().success();
+
+    let (files, err) = git_changed_files("target", &td);
+
+    assert_eq!(
+        files,
+        "\
+file_target
+new
+",
+        "out: {} err: {}",
+        files,
+        err
+    );
+}
+
+#[test]
 fn test_no_commit_in_range() {
     let td = assert_fs::TempDir::new().unwrap();
     git_init(&td);
@@ -81,7 +127,7 @@ fn test_no_commit_in_range() {
     }
     git(&["checkout", "-b", "changes", ":/c"], &td);
     git(&["branch", "-u", "main"], &td);
-    for n in &["e", "f", "g"] {
+    for n in &["target", "f", "g"] {
         git_file_commit(&n, &td);
     }
 
@@ -91,7 +137,7 @@ fn test_no_commit_in_range() {
         "\
 * g HEAD -> changes
 * f
-* e
+* target
 | * d main
 |/
 * c
@@ -109,19 +155,14 @@ fn test_no_commit_in_range() {
     let out = string(assertion.get_output().stdout.clone());
     assert!(out.contains("No commit contains the pattern"), out);
 
-    fixup(&td).args(&["-P", "e"]).assert().success();
+    fixup(&td).args(&["-P", "target"]).assert().success();
 
-    let shown = git_out(
-        &["diff-tree", "--no-commit-id", "--name-only", "-r", ":/e"],
-        &td,
-    );
-    let files = string(shown.stdout);
-    let err = string(shown.stderr);
+    let (files, err) = git_changed_files("target", &td);
 
     assert_eq!(
         files,
         "\
-file_e
+file_target
 new
 ",
         "out: {} err: {}",
@@ -144,6 +185,21 @@ fn git_file_commit(name: &str, tempdir: &assert_fs::TempDir) {
     tempdir.child(format!("file_{}", name)).touch().unwrap();
     git(&["add", "-A"], &tempdir);
     git(&["commit", "-m", &name], &tempdir);
+}
+
+/// Get the git shown output for the target commit
+fn git_changed_files(name: &str, tempdir: &assert_fs::TempDir) -> (String, String) {
+    let out = git_out(
+        &[
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            &format!(":/{}", name),
+        ],
+        &tempdir,
+    );
+    (string(out.stdout), string(out.stderr))
 }
 
 /// Run git in tempdir with args and panic if theres an error
