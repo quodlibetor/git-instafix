@@ -247,10 +247,6 @@ fn select_commit_to_amend<'a>(
         })
         .collect();
     if let Some(message_pattern) = message_pattern.as_ref() {
-        eprintln!(
-            "trying to find message_pattern in {} commits",
-            commits.len()
-        );
         commits
             .into_iter()
             .find(|commit| {
