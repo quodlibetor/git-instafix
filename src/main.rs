@@ -138,6 +138,13 @@ fn do_rebase_inner(
 ) -> Result<(), anyhow::Error> {
     let sig = repo.signature()?;
 
+    let mut branches: HashMap<Oid, Branch> = HashMap::new();
+    for (branch, _type) in repo.branches(Some(git2::BranchType::Local))?.flatten() {
+        let oid = branch.get().peel_to_commit()?.id();
+        // TODO: handle multiple branches pointing to the same commit
+        branches.insert(oid, branch);
+    }
+
     match rebase.next() {
         Some(ref res) => {
             let op = res.as_ref().map_err(|e| anyhow!("No commit: {}", e))?;
@@ -169,7 +176,12 @@ fn do_rebase_inner(
             Some(Pick) => {
                 let commit = repo.find_commit(op.id())?;
                 if commit.message() != fixup_message {
-                    rebase.commit(None, &sig, None)?;
+                    let new_id = rebase.commit(None, &sig, None)?;
+                    if let Some(branch) = branches.get_mut(&commit.id()) {
+                        branch
+                            .get_mut()
+                            .set_target(new_id, "git-fixup retarget historical branch")?;
+                    }
                 }
             }
             Some(Fixup) | Some(Squash) | Some(Exec) | Some(Edit) | Some(Reword) => {

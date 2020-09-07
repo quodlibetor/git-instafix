@@ -76,14 +76,10 @@ fn simple_straightline_commits() {
     let td = assert_fs::TempDir::new().unwrap();
     git_init(&td);
 
-    for n in &["a", "b"] {
-        git_file_commit(n, &td);
-    }
+    git_commits(&["a", "b"], &td);
     git(&["checkout", "-b", "changes"], &td);
     git(&["branch", "-u", "main"], &td);
-    for n in &["target", "d"] {
-        git_file_commit(&n, &td);
-    }
+    git_commits(&["target", "d"], &td);
 
     let log = git_log(&td);
     assert_eq!(
@@ -122,14 +118,10 @@ fn test_no_commit_in_range() {
     let td = assert_fs::TempDir::new().unwrap();
     git_init(&td);
 
-    for n in &["a", "b", "c", "d"] {
-        git_file_commit(n, &td);
-    }
+    git_commits(&["a", "b", "c", "d"], &td);
     git(&["checkout", "-b", "changes", ":/c"], &td);
     git(&["branch", "-u", "main"], &td);
-    for n in &["target", "f", "g"] {
-        git_file_commit(&n, &td);
-    }
+    git_commits(&["target", "f", "g"], &td);
 
     let out = git_log(&td);
     assert_eq!(
@@ -171,8 +163,61 @@ new
     );
 }
 
+#[test]
+fn retarget_branches_in_range() {
+    let td = assert_fs::TempDir::new().unwrap();
+    git_init(&td);
+
+    git_commits(&["a", "b"], &td);
+    git(&["checkout", "-b", "intermediate"], &td);
+    git_commits(&["target", "c", "d"], &td);
+
+    git(&["checkout", "-b", "changes"], &td);
+    git_commits(&["e", "f"], &td);
+
+    let expected = "\
+* f HEAD -> changes
+* e
+* d intermediate
+* c
+* target
+* b main
+* a
+";
+    let out = git_log(&td);
+    assert_eq!(out, expected, "log:\n{}\nexpected:\n{}", out, expected);
+
+    td.child("new").touch().unwrap();
+    git(&["add", "new"], &td);
+
+    fixup(&td).args(&["-P", "target"]).assert().success();
+
+    let (files, err) = git_changed_files("target", &td);
+
+    assert_eq!(
+        files,
+        "\
+file_target
+new
+",
+        "out: {} err: {}",
+        files,
+        err
+    );
+
+    // should be identical to before
+    let out = git_log(&td);
+    assert_eq!(out, expected, "\nactual:\n{}\nexpected:\n{}", out, expected);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Helpers
+
+fn git_commits(ids: &[&str], tempdir: &assert_fs::TempDir) {
+    for n in ids {
+        git_file_commit(n, &tempdir);
+    }
+}
 
 fn git_init(tempdir: &assert_fs::TempDir) {
     git(&["init", "--initial-branch=main"], &tempdir);
