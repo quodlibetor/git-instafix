@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::process::Command;
 
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow, bail, Context};
 use console::style;
 use dialoguer::{Confirm, Select};
 use git2::{Branch, Commit, Diff, Object, ObjectType, Oid, Rebase, Repository};
@@ -20,17 +20,38 @@ pub fn instafix(
 ) -> Result<(), anyhow::Error> {
     let repo = Repository::open(".")?;
     let diff = create_diff(&repo)?;
-    let head = repo
-        .head()
-        .map_err(|e| anyhow!("HEAD is not pointing at a valid branch: {}", e))?;
+    let head = repo.head().context("finding head commit")?;
     let head_branch = Branch::wrap(head);
-    println!("head_branch: {:?}", head_branch.name().unwrap().unwrap());
     let upstream = get_upstream(&repo, &head_branch, upstream_branch_name)?;
     let commit_to_amend = select_commit_to_amend(&repo, upstream, max_commits, &message_pattern)?;
+    eprintln!("Selected {}", disp(&commit_to_amend));
     do_fixup_commit(&repo, &head_branch, &commit_to_amend, false)?;
-    println!("selected: {}", disp(&commit_to_amend));
     let current_branch = Branch::wrap(repo.head()?);
     do_rebase(&repo, &current_branch, &commit_to_amend, &diff)?;
+
+    Ok(())
+}
+
+pub fn rebase_onto(onto: &str) -> Result<(), anyhow::Error> {
+    let repo = Repository::open(".")?;
+    let onto = repo
+        .reference_to_annotated_commit(
+            &repo
+                .find_branch(onto, git2::BranchType::Local)
+                .context("Chosing parent")?
+                .get(),
+        )
+        .context("creating onto annotated commit")?;
+    let head = repo
+        .reference_to_annotated_commit(&repo.head().context("finding head")?)
+        .context("choosing branch")?;
+    let rebase = &mut repo
+        .rebase(Some(&head), None, Some(&onto), None)
+        .context("creating rebase")?;
+
+    if let Ok(_) = do_rebase_inner(&repo, rebase, None) {
+        rebase.finish(None).context("finishing")?;
+    }
 
     Ok(())
 }
@@ -48,8 +69,11 @@ fn do_rebase(
 
     let rebase = &mut repo
         .rebase(Some(&branch_commit), Some(&first_parent), None, None)
-        .map_err(|e| anyhow!("Error starting rebase: {}", e))?;
-    match do_rebase_inner(repo, rebase, diff, fixup_message) {
+        .context("starting rebase")?;
+
+    apply_diff_in_rebase(repo, rebase, diff)?;
+
+    match do_rebase_inner(repo, rebase, fixup_message) {
         Ok(_) => {
             rebase.finish(None)?;
             Ok(())
@@ -66,21 +90,11 @@ fn do_rebase(
     }
 }
 
-fn do_rebase_inner(
+fn apply_diff_in_rebase(
     repo: &Repository,
     rebase: &mut Rebase,
     diff: &Diff,
-    fixup_message: Option<&str>,
 ) -> Result<(), anyhow::Error> {
-    let sig = repo.signature()?;
-
-    let mut branches: HashMap<Oid, Branch> = HashMap::new();
-    for (branch, _type) in repo.branches(Some(git2::BranchType::Local))?.flatten() {
-        let oid = branch.get().peel_to_commit()?.id();
-        // TODO: handle multiple branches pointing to the same commit
-        branches.insert(oid, branch);
-    }
-
     match rebase.next() {
         Some(ref res) => {
             let op = res.as_ref().map_err(|e| anyhow!("No commit: {}", e))?;
@@ -98,11 +112,26 @@ fn do_rebase_inner(
                 git2::ResetType::Soft,
                 None,
             )?;
-
-            rewrit_id
         }
         None => bail!("Unable to start rebase: no first step in rebase"),
     };
+    Ok(())
+}
+
+/// Do a rebase, pulling all intermediate branches along the way
+fn do_rebase_inner(
+    repo: &Repository,
+    rebase: &mut Rebase,
+    fixup_message: Option<&str>,
+) -> Result<(), anyhow::Error> {
+    let sig = repo.signature()?;
+
+    let mut branches: HashMap<Oid, Branch> = HashMap::new();
+    for (branch, _type) in repo.branches(Some(git2::BranchType::Local))?.flatten() {
+        let oid = branch.get().peel_to_commit()?.id();
+        // TODO: handle multiple branches pointing to the same commit
+        branches.insert(oid, branch);
+    }
 
     while let Some(ref res) = rebase.next() {
         use git2::RebaseOperationType::*;
@@ -111,12 +140,17 @@ fn do_rebase_inner(
         match op.kind() {
             Some(Pick) => {
                 let commit = repo.find_commit(op.id())?;
-                if commit.message() != fixup_message {
+                let message = commit.message();
+                if message.is_some() && message != fixup_message {
                     let new_id = rebase.commit(None, &sig, None)?;
                     if let Some(branch) = branches.get_mut(&commit.id()) {
-                        branch
-                            .get_mut()
-                            .set_target(new_id, "git-fixup retarget historical branch")?;
+                        // Don't retarget the last branch, rebase.finish does that for us
+                        // TODO: handle multiple branches
+                        if rebase.operation_current() != Some(rebase.len() - 1) {
+                            branch
+                                .get_mut()
+                                .set_target(new_id, "git-fixup retarget historical branch")?;
+                        }
                     }
                 }
             }
