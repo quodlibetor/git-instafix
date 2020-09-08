@@ -76,14 +76,10 @@ fn simple_straightline_commits() {
     let td = assert_fs::TempDir::new().unwrap();
     git_init(&td);
 
-    for n in &["a", "b"] {
-        git_file_commit(n, &td);
-    }
+    git_commits(&["a", "b"], &td);
     git(&["checkout", "-b", "changes"], &td);
     git(&["branch", "-u", "main"], &td);
-    for n in &["target", "d"] {
-        git_file_commit(&n, &td);
-    }
+    git_commits(&["target", "d"], &td);
 
     let log = git_log(&td);
     assert_eq!(
@@ -122,14 +118,10 @@ fn test_no_commit_in_range() {
     let td = assert_fs::TempDir::new().unwrap();
     git_init(&td);
 
-    for n in &["a", "b", "c", "d"] {
-        git_file_commit(n, &td);
-    }
+    git_commits(&["a", "b", "c", "d"], &td);
     git(&["checkout", "-b", "changes", ":/c"], &td);
     git(&["branch", "-u", "main"], &td);
-    for n in &["target", "f", "g"] {
-        git_file_commit(&n, &td);
-    }
+    git_commits(&["target", "f", "g"], &td);
 
     let out = git_log(&td);
     assert_eq!(
@@ -171,8 +163,118 @@ new
     );
 }
 
+#[test]
+fn retarget_branches_in_range() {
+    let td = assert_fs::TempDir::new().unwrap();
+    git_init(&td);
+
+    git_commits(&["a", "b"], &td);
+    git(&["checkout", "-b", "intermediate"], &td);
+    git_commits(&["target", "c", "d"], &td);
+
+    git(&["checkout", "-b", "changes"], &td);
+    git_commits(&["e", "f"], &td);
+
+    let expected = "\
+* f HEAD -> changes
+* e
+* d intermediate
+* c
+* target
+* b main
+* a
+";
+    let out = git_log(&td);
+    assert_eq!(out, expected, "log:\n{}\nexpected:\n{}", out, expected);
+
+    td.child("new").touch().unwrap();
+    git(&["add", "new"], &td);
+
+    fixup(&td).args(&["-P", "target"]).assert().success();
+
+    let (files, err) = git_changed_files("target", &td);
+
+    assert_eq!(
+        files,
+        "\
+file_target
+new
+",
+        "out: {} err: {}",
+        files,
+        err
+    );
+
+    // should be identical to before
+    let out = git_log(&td);
+    assert_eq!(out, expected, "\nactual:\n{}\nexpected:\n{}", out, expected);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// rebase-with-intermediates tests
+
+#[test]
+fn test_rebase_with_intermediates() {
+    let td = assert_fs::TempDir::new().unwrap();
+    git_init(&td);
+
+    git_commits(&["a", "b", "c"], &td);
+    git(&["checkout", "-b", "int_1", ":/b"], &td);
+    git_commits(&["d", "e"], &td);
+    git(&["checkout", "-b", "int_2"], &td);
+
+    git_commits(&["f", "g"], &td);
+
+    git(&["checkout", "-b", "changes"], &td);
+
+    git_commits(&["h", "i"], &td);
+
+    let out = git_log(&td);
+    let expected = "\
+* i HEAD -> changes
+* h
+* g int_2
+* f
+* e int_1
+* d
+| * c main
+|/
+* b
+* a
+";
+    assert_eq!(
+        out, expected,
+        "pre rebase\nactual:\n{}\nexpected:\n{}",
+        out, expected
+    );
+
+    if let Err(e) = rebase("main", &td).ok() {
+        panic!("ERROR: {}", e);
+    }
+
+    let out = git_log(&td);
+    let expected = "\
+* i HEAD -> changes
+* h
+* g int_2
+* f
+* e int_1
+* d
+* c main
+* b
+* a
+";
+    assert_eq!(out, expected, "\nactual:\n{}\nexpected:\n{}", out, expected);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Helpers
+
+fn git_commits(ids: &[&str], tempdir: &assert_fs::TempDir) {
+    for n in ids {
+        git_file_commit(n, &tempdir);
+    }
+}
 
 fn git_init(tempdir: &assert_fs::TempDir) {
     git(&["init", "--initial-branch=main"], &tempdir);
@@ -240,5 +342,12 @@ fn git_inner(args: &[&str], tempdir: &assert_fs::TempDir) -> Command {
 fn fixup(dir: &assert_fs::TempDir) -> Command {
     let mut c = Command::cargo_bin("git-fixup").unwrap();
     c.current_dir(&dir.path());
+    c
+}
+
+fn rebase(onto: &str, dir: &assert_fs::TempDir) -> Command {
+    let mut c = Command::cargo_bin("git-rebase-with-intermediates").unwrap();
+    c.current_dir(&dir.path());
+    c.arg(onto);
     c
 }
