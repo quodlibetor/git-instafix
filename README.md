@@ -50,6 +50,10 @@ that point.
 If you're on macos or linux and using homebrew you should be able to do:
 
     brew install quodlibetor/git-fixup/git-fixup
+    
+You can also install from this repo with `cargo`:
+
+    cargo install --git https://github.com/quodlibetor/git-fixup
 
 Otherwise, you will need to compile with Rust. Install rust, clone this repo,
 build, and then copy the binary into your bin dir:
