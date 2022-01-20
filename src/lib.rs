@@ -17,9 +17,10 @@ pub fn instafix(
     max_commits: usize,
     message_pattern: Option<String>,
     upstream_branch_name: Option<&str>,
+    require_newline: bool,
 ) -> Result<(), anyhow::Error> {
     let repo = Repository::open(".")?;
-    let diff = create_diff(&repo)?;
+    let diff = create_diff(&repo, require_newline)?;
     let head = repo.head().context("finding head commit")?;
     let head_branch = Branch::wrap(head);
     let upstream = get_upstream(&repo, &head_branch, upstream_branch_name)?;
@@ -218,7 +219,7 @@ fn get_upstream<'a>(
 }
 
 /// Get a diff either from the index or the diff from the index to the working tree
-fn create_diff(repo: &Repository) -> Result<Diff, anyhow::Error> {
+fn create_diff(repo: &Repository, require_newline: bool) -> Result<Diff, anyhow::Error> {
     let head = repo.head()?;
     let head_tree = head.peel_to_tree()?;
     let staged_diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
@@ -230,6 +231,7 @@ fn create_diff(repo: &Repository) -> Result<Diff, anyhow::Error> {
             print_diff(Changes::Unstaged)?;
             if !Confirm::new()
                 .with_prompt("Nothing staged, stage and commit everything?")
+                .wait_for_newline(require_newline)
                 .interact()?
             {
                 bail!("");
