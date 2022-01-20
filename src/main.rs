@@ -17,6 +17,7 @@ use std::env;
 use structopt::StructOpt;
 
 const UPSTREAM_VAR: &str = "GIT_INSTAFIX_UPSTREAM";
+const REQUIRE_NEWLINE: &str = "GIT_INSTAFIX_REQUIRE_NEWLINE";
 
 #[derive(StructOpt, Debug)]
 #[structopt(
@@ -51,6 +52,10 @@ struct Args {
 
     #[structopt(long, env(UPSTREAM_VAR))]
     default_upstream_branch: Option<String>,
+
+    /// Require a newline when confirming y/n questions
+    #[structopt(long, env(REQUIRE_NEWLINE))]
+    require_newline: bool,
 }
 
 fn main() {
@@ -63,6 +68,7 @@ fn main() {
         args.max_commits,
         args.commit_message_pattern,
         args.default_upstream_branch.as_deref(),
+        args.require_newline,
     ) {
         // An empty message means don't display any error message
         let msg = e.to_string();
