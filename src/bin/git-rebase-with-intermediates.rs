@@ -1,11 +1,11 @@
-use structopt::StructOpt;
+use clap::Parser;
 
-#[derive(Debug, StructOpt)]
-#[structopt(
+#[derive(Parser, Debug)]
+#[clap(
     about = "Perform a rebase, and pull all the branches that were pointing at commits being rebased",
     max_term_width = 100,
-    setting = structopt::clap::AppSettings::UnifiedHelpMessage,
-    setting = structopt::clap::AppSettings::ColoredHelp,
+    setting = clap::AppSettings::UnifiedHelpMessage,
+    setting = clap::AppSettings::ColoredHelp,
 )]
 struct Args {
     /// The target ref
@@ -13,7 +13,7 @@ struct Args {
 }
 
 fn main() {
-    let args = Args::from_args();
+    let args = Args::parse();
     if let Err(e) = git_fixup::rebase_onto(&args.onto) {
         eprintln!("{:#}", e);
         std::process::exit(1);
