@@ -145,7 +145,11 @@ fn test_no_commit_in_range() {
 
     let assertion = fixup(&td).args(&["-P", "b"]).assert().failure();
     let out = string(assertion.get_output().stdout.clone());
-    assert!(out.contains("No commit contains the pattern"), out);
+    assert!(
+        out.contains("No commit contains the pattern"),
+        "actual: {}",
+        out
+    );
 
     fixup(&td).args(&["-P", "target"]).assert().success();
 
