@@ -14,13 +14,13 @@
 
 use std::env;
 
-use structopt::StructOpt;
+use clap::Parser;
 
 const UPSTREAM_VAR: &str = "GIT_INSTAFIX_UPSTREAM";
 const REQUIRE_NEWLINE: &str = "GIT_INSTAFIX_REQUIRE_NEWLINE";
 
-#[derive(StructOpt, Debug)]
-#[structopt(
+#[derive(Parser, Debug)]
+#[clap(
     about = "Fix a commit in your history with your currently-staged changes",
     long_about = "Fix a commit in your history with your currently-staged changes
 
@@ -35,31 +35,31 @@ When run with no arguments this will:
   * Fixup your selected commit with the staged changes
 ",
     max_term_width = 100,
-    setting = structopt::clap::AppSettings::UnifiedHelpMessage,
-    setting = structopt::clap::AppSettings::ColoredHelp,
+    setting = clap::AppSettings::UnifiedHelpMessage,
+    setting = clap::AppSettings::ColoredHelp,
 )]
 struct Args {
     /// Use `squash!`: change the commit message that you amend
-    #[structopt(short = "s", long = "squash")]
+    #[clap(short = 's', long = "squash")]
     squash: bool,
     /// The maximum number of commits to show when looking for your merge point
-    #[structopt(short = "m", long = "max-commits", default_value = "15")]
+    #[clap(short = 'm', long = "max-commits", default_value = "15")]
     max_commits: usize,
 
     /// Specify a commit to ammend by the subject line of the commit
-    #[structopt(short = "P", long)]
+    #[clap(short = 'P', long)]
     commit_message_pattern: Option<String>,
 
-    #[structopt(long, env(UPSTREAM_VAR))]
+    #[clap(long, env = UPSTREAM_VAR)]
     default_upstream_branch: Option<String>,
 
     /// Require a newline when confirming y/n questions
-    #[structopt(long, env(REQUIRE_NEWLINE))]
+    #[clap(long, env = REQUIRE_NEWLINE)]
     require_newline: bool,
 }
 
 fn main() {
-    let mut args = Args::from_args();
+    let mut args = Args::parse();
     if env::args().next().unwrap().ends_with("squash") {
         args.squash = true
     }
