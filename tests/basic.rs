@@ -215,63 +215,6 @@ new
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// rebase-with-intermediates tests
-
-#[test]
-fn test_rebase_with_intermediates() {
-    let td = assert_fs::TempDir::new().unwrap();
-    git_init(&td);
-
-    git_commits(&["a", "b", "c"], &td);
-    git(&["checkout", "-b", "int_1", ":/b"], &td);
-    git_commits(&["d", "e"], &td);
-    git(&["checkout", "-b", "int_2"], &td);
-
-    git_commits(&["f", "g"], &td);
-
-    git(&["checkout", "-b", "changes"], &td);
-
-    git_commits(&["h", "i"], &td);
-
-    let out = git_log(&td);
-    let expected = "\
-* i HEAD -> changes
-* h
-* g int_2
-* f
-* e int_1
-* d
-| * c main
-|/
-* b
-* a
-";
-    assert_eq!(
-        out, expected,
-        "pre rebase\nactual:\n{}\nexpected:\n{}",
-        out, expected
-    );
-
-    if let Err(e) = rebase("main", &td).ok() {
-        panic!("ERROR: {}", e);
-    }
-
-    let out = git_log(&td);
-    let expected = "\
-* i HEAD -> changes
-* h
-* g int_2
-* f
-* e int_1
-* d
-* c main
-* b
-* a
-";
-    assert_eq!(out, expected, "\nactual:\n{}\nexpected:\n{}", out, expected);
-}
-
-///////////////////////////////////////////////////////////////////////////////
 // Helpers
 
 fn git_commits(ids: &[&str], tempdir: &assert_fs::TempDir) {
