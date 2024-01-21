@@ -4,6 +4,15 @@ version = "0.1.8"
 authors = ["Brandon W Maister <quodlibetor@gmail.com>"]
 edition = "2021"
 default-run = "git-fixup"
+repository = "https://github.com/quodlibetor/git-fixup"
+description = """Apply staged git changes to an ancestor git commit.
+"""
+
+[package.metadata.wix]
+upgrade-guid = "F5B771EA-3725-4523-9EE3-06FA112A5573"
+path-guid = "A8CD8E47-6A93-4B11-B617-865BFCA4C29F"
+license = false
+eula = false
 
 [dependencies]
 anyhow = "1.0.58"
@@ -16,3 +25,29 @@ git2 = { version = "0.14.4", default_features = false }
 assert_cmd = "2.0.4"
 assert_fs = "1.0.7"
 itertools = "0.10.3"
+
+# The profile that 'cargo dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+# Config for 'cargo dist'
+[workspace.metadata.dist]
+# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.10.0"
+# CI backends to support
+ci = ["github"]
+# The installers to generate for each app
+installers = ["shell", "npm", "homebrew", "msi"]
+# A GitHub repo to push Homebrew formulas to
+tap = "quodlibetor/git-fixup"
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
+# The archive format to use for windows builds (defaults .zip)
+windows-archive = ".tar.gz"
+# The archive format to use for non-windows builds (defaults .tar.xz)
+unix-archive = ".tar.gz"
+# Publish jobs to run in CI
+publish-jobs = ["homebrew"]
+# Publish jobs to run in CI
+pr-run-mode = "plan"
