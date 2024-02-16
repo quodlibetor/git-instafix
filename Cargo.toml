@@ -1,9 +1,10 @@
 [package]
 name = "git-fixup"
-version = "0.1.8"
+version = "0.1.9-prerelease.2"
 authors = ["Brandon W Maister <quodlibetor@gmail.com>"]
 edition = "2021"
 default-run = "git-fixup"
+publish = false
 repository = "https://github.com/quodlibetor/git-fixup"
 description = """Apply staged git changes to an ancestor git commit.
 """
@@ -30,6 +31,9 @@ itertools = "0.10.3"
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[package.metadata.dist]
+dist = true
 
 # Config for 'cargo dist'
 [workspace.metadata.dist]
