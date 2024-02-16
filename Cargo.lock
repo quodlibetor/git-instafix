@@ -250,7 +250,7 @@ dependencies = [
 
 [[package]]
 name = "git-fixup"
-version = "0.1.9-prerelease.2"
+version = "0.1.9-prerelease.3"
 dependencies = [
  "anyhow",
  "assert_cmd",
