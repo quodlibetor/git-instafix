@@ -1,6 +1,6 @@
 [package]
 name = "git-fixup"
-version = "0.1.9-prerelease.4"
+version = "0.1.9-prerelease.5"
 authors = ["Brandon W Maister <quodlibetor@gmail.com>"]
 edition = "2021"
 default-run = "git-fixup"
@@ -53,5 +53,6 @@ windows-archive = ".tar.gz"
 unix-archive = ".tar.gz"
 # Publish jobs to run in CI
 publish-jobs = ["homebrew"]
+publish-prerelease = true
 # Publish jobs to run in CI
 pr-run-mode = "plan"
