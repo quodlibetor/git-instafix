@@ -1,6 +1,6 @@
 [package]
 name = "git-fixup"
-version = "0.1.9-prerelease.3"
+version = "0.1.9-prerelease.4"
 authors = ["Brandon W Maister <quodlibetor@gmail.com>"]
 edition = "2021"
 default-run = "git-fixup"
@@ -44,9 +44,9 @@ ci = ["github"]
 # The installers to generate for each app
 installers = ["shell", "npm", "homebrew", "msi"]
 # A GitHub repo to push Homebrew formulas to
-tap = "quodlibetor/git-fixup"
+tap = "quodlibetor/homebrew-git-fixup"
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"]
 # The archive format to use for windows builds (defaults .zip)
 windows-archive = ".tar.gz"
 # The archive format to use for non-windows builds (defaults .tar.xz)
