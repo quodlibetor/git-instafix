@@ -1,6 +1,6 @@
 [package]
 name = "git-fixup"
-version = "0.1.9-prerelease.5"
+version = "0.1.9"
 authors = ["Brandon W Maister <quodlibetor@gmail.com>"]
 edition = "2021"
 default-run = "git-fixup"
