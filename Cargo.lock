@@ -249,8 +249,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "git-fixup"
-version = "0.1.9"
+name = "git-instafix"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "assert_cmd",

@@ -1,3 +1,7 @@
+# Version 0.2.0
+
+* Rename to git-instafix because there are a bunch of existing projects named git-fixup
+
 # Version 0.1.9
 
 * CI and doc improvements
