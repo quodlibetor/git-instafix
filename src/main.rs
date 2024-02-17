@@ -63,7 +63,7 @@ fn main() {
     if env::args().next().unwrap().ends_with("squash") {
         args.squash = true
     }
-    if let Err(e) = git_fixup::instafix(
+    if let Err(e) = git_instafix::instafix(
         args.squash,
         args.max_commits,
         args.commit_message_pattern,

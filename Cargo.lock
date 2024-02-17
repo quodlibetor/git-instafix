@@ -249,7 +249,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "git-fixup"
+name = "git-instafix"
 version = "0.1.9"
 dependencies = [
  "anyhow",

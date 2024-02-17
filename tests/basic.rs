@@ -287,14 +287,7 @@ fn git_inner(args: &[&str], tempdir: &assert_fs::TempDir) -> Command {
 
 /// Get something that can get args added to it
 fn fixup(dir: &assert_fs::TempDir) -> Command {
-    let mut c = Command::cargo_bin("git-fixup").unwrap();
+    let mut c = Command::cargo_bin("git-instafix").unwrap();
     c.current_dir(&dir.path());
-    c
-}
-
-fn rebase(onto: &str, dir: &assert_fs::TempDir) -> Command {
-    let mut c = Command::cargo_bin("git-rebase-with-intermediates").unwrap();
-    c.current_dir(&dir.path());
-    c.arg(onto);
     c
 }

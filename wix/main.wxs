@@ -60,7 +60,7 @@
 
     <Product
         Id='*'
-        Name='git-fixup'
+        Name='git-instafix'
         UpgradeCode='F5B771EA-3725-4523-9EE3-06FA112A5573'
         Manufacturer='Brandon W Maister'
         Language='1033'
@@ -84,11 +84,11 @@
             DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
-        <Property Id='DiskPrompt' Value='git-fixup Installation'/>
+        <Property Id='DiskPrompt' Value='git-instafix Installation'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
-                <Directory Id='APPLICATIONFOLDER' Name='git-fixup'>
+                <Directory Id='APPLICATIONFOLDER' Name='git-instafix'>
                     
                     <!--
                       Enabling the license sidecar file in the installer is a four step process:
@@ -124,9 +124,9 @@
                         <Component Id='binary0' Guid='*'>
                             <File
                                 Id='exe0'
-                                Name='git-fixup.exe'
+                                Name='git-instafix.exe'
                                 DiskId='1'
-                                Source='$(var.CargoTargetBinDir)\git-fixup.exe'
+                                Source='$(var.CargoTargetBinDir)\git-instafix.exe'
                                 KeyPath='yes'/>
                         </Component>
                     </Directory>
@@ -174,7 +174,7 @@
         <!--<Icon Id='ProductICO' SourceFile='wix\Product.ico'/>-->
         <!--<Property Id='ARPPRODUCTICON' Value='ProductICO' />-->
 
-        <Property Id='ARPHELPLINK' Value='https://github.com/quodlibetor/git-fixup'/>
+        <Property Id='ARPHELPLINK' Value='https://github.com/quodlibetor/git-instafix'/>
         
         <UI>
             <UIRef Id='WixUI_FeatureTree'/>

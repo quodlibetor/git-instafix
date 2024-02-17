@@ -150,7 +150,7 @@ fn do_rebase_inner(
                         if rebase.operation_current() != Some(rebase.len() - 1) {
                             branch
                                 .get_mut()
-                                .set_target(new_id, "git-fixup retarget historical branch")?;
+                                .set_target(new_id, "git-instafix retarget historical branch")?;
                         }
                     }
                 }
