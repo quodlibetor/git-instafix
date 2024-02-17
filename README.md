@@ -44,7 +44,11 @@ git will give you a chance to edit the commit message before changing the tree a
 
 ## Installation
 
-If you're on macos or linux and using homebrew you should be able to do:
+You can install the latest version with curl:
+
+    curl --proto '=https' --tlsv1.2 -LsSf https://github.com/quodlibetor/git-instafix/releases/latest/download/git-instafix-installer.sh | sh
+
+If you're on MacOS you can use homebrew:
 
     brew install quodlibetor/git-tools/git-instafix
 
@@ -59,6 +63,18 @@ build, and then copy the binary into your bin dir:
     git clone https://github.com/quodlibetor/git-instafix && cd git-instafix
     cargo build --release
     cp target/release/git-instafix /usr/local/bin/git-instafix
+
+## Similar or related projects
+
+* [`git-absorb`](https://github.com/tummychow/git-absorb) is a fantastic tool that will
+  automatically determine which commits to amend. It is reliable, the main downside to it is that
+  it relies on a diff intersection between your changes and ancestor commits, and so sometimes
+  cannot determine which commits to amend.
+* [`git-fixup`](https://github.com/keis/git-fixup) is more-or less a pure-shell version of this
+  same tool. We have some different features. The big differences between `git-fixup` and
+  `git-instafix` are pretty much all surface level, and `git-instafix` is written in Rust which
+  allows for some slightly fancier interactions. It aims to entirely remove dependencies on the
+  `git` binary (right now it's still used for rebase) at which point it _may_ be more reliable.
 
 ## License
 
