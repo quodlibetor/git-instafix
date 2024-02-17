@@ -2,63 +2,28 @@ name: Rust
 
 on:
   push:
-    branches: [ main ]
-    tags: [ v* ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+  CLICOLOR: 1
 
 jobs:
   test:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        rustv: [stable, beta, nightly]
+        rustv: [stable, beta]
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v2
-    - name: Install rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: ${{ matrix.rustv }}
-        override: true
-    - name: Run cargo check
-      uses: actions-rs/cargo@v1
-      with:
-        command: check
-    - name: Run cargo test
-      uses: actions-rs/cargo@v1
-      with:
-        command: test
-
-  release:
-    needs: test
-    if: startsWith(github.ref, 'refs/tags/')
-    strategy:
-      matrix:
-        runner:
-        - os: ubuntu-16.04
-          target: x86_64-unknown-linux-gnu
-        - os: macos-10.15
-          target: x86_64-apple-darwin
-    runs-on: ${{ matrix.runner.os }}
-    env:
-      TARGET: ${{ matrix.runner.target }}
-      PROJECT_NAME: git-fixup
-      REF: ${{ github.ref }}
-    steps:
-    - uses: actions/checkout@v2
-    - name: Install rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: ${{ matrix.runner.target }}
-        override: true
-    - name: Build Release
-      run: ./ci/build-release-artifacts.sh
-    - name: Upload Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          deployment/*.tar.gz
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.rustv }}
+          override: true
+      - uses: swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test
