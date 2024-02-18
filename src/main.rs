@@ -21,6 +21,7 @@ const REQUIRE_NEWLINE: &str = "GIT_INSTAFIX_REQUIRE_NEWLINE";
 
 #[derive(Parser, Debug)]
 #[clap(
+    version,
     about = "Fix a commit in your history with your currently-staged changes",
     long_about = "Fix a commit in your history with your currently-staged changes
 
@@ -34,9 +35,7 @@ When run with no arguments this will:
       * HEAD's upstream
   * Fixup your selected commit with the staged changes
 ",
-    max_term_width = 100,
-    setting = clap::AppSettings::UnifiedHelpMessage,
-    setting = clap::AppSettings::ColoredHelp,
+    max_term_width = 100
 )]
 struct Args {
     /// Use `squash!`: change the commit message that you amend
