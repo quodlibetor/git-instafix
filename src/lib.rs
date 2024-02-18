@@ -37,8 +37,7 @@ pub fn rebase_onto(onto: &str) -> Result<(), anyhow::Error> {
     let repo = Repository::open(".")?;
     let onto = repo
         .reference_to_annotated_commit(
-            &repo
-                .find_branch(onto, git2::BranchType::Local)
+            repo.find_branch(onto, git2::BranchType::Local)
                 .context("Chosing parent")?
                 .get(),
         )
@@ -50,7 +49,7 @@ pub fn rebase_onto(onto: &str) -> Result<(), anyhow::Error> {
         .rebase(Some(&head), None, Some(&onto), None)
         .context("creating rebase")?;
 
-    if let Ok(_) = do_rebase_inner(&repo, rebase, None) {
+    if do_rebase_inner(&repo, rebase, None).is_ok() {
         rebase.finish(None).context("finishing")?;
     }
 
@@ -169,7 +168,7 @@ fn do_rebase_inner(
 fn commit_parent<'a>(commit: &'a Commit) -> Result<Commit<'a>, anyhow::Error> {
     match commit.parents().next() {
         Some(c) => Ok(c),
-        None => bail!("Commit '{}' has no parents", disp(&commit)),
+        None => bail!("Commit '{}' has no parents", disp(commit)),
     }
 }
 
@@ -198,12 +197,10 @@ fn get_upstream<'a>(
             })
             .ok_or_else(|| anyhow!("cannot find branch with name {:?}", upstream_name))?;
         branch.into_reference().peel(ObjectType::Commit)?
+    } else if let Ok(upstream) = head_branch.upstream() {
+        upstream.into_reference().peel(ObjectType::Commit)?
     } else {
-        if let Ok(upstream) = head_branch.upstream() {
-            upstream.into_reference().peel(ObjectType::Commit)?
-        } else {
-            return Ok(None);
-        }
+        return Ok(None);
     };
 
     let mb = repo.merge_base(
@@ -282,19 +279,19 @@ fn select_commit_to_amend<'a>(
     let commits = if let Some(upstream) = upstream.as_ref() {
         let upstream_oid = upstream.id();
         walker
-            .flat_map(|r| r)
+            .flatten()
             .take_while(|rev| *rev != upstream_oid)
             .take(max_commits)
             .map(|rev| repo.find_commit(rev))
             .collect::<Result<Vec<_>, _>>()?
     } else {
         walker
-            .flat_map(|r| r)
+            .flatten()
             .take(max_commits)
             .map(|rev| repo.find_commit(rev))
             .collect::<Result<Vec<_>, _>>()?
     };
-    if commits.len() == 0 {
+    if commits.is_empty() {
         bail!(
             "No commits between {} and {:?}",
             format_ref(&repo.head()?)?,
@@ -330,7 +327,7 @@ fn select_commit_to_amend<'a>(
                     branches
                         .get(&commit.id())
                         .map(|n| format!("({}) ", n))
-                        .unwrap_or_else(String::new)
+                        .unwrap_or_default()
                 } else {
                     String::new()
                 };
