@@ -13,7 +13,7 @@ enum Changes {
 }
 
 pub fn instafix(
-    _squash: bool,
+    squash: bool,
     max_commits: usize,
     message_pattern: Option<String>,
     upstream_branch_name: Option<&str>,
@@ -26,7 +26,7 @@ pub fn instafix(
     let upstream = get_upstream(&repo, &head_branch, upstream_branch_name)?;
     let commit_to_amend = select_commit_to_amend(&repo, upstream, max_commits, &message_pattern)?;
     eprintln!("Selected {}", disp(&commit_to_amend));
-    do_fixup_commit(&repo, &head_branch, &commit_to_amend, false)?;
+    do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
     let current_branch = Branch::wrap(repo.head()?);
     do_rebase(&repo, &current_branch, &commit_to_amend, &diff)?;
 
