@@ -38,7 +38,7 @@ When run with no arguments this will:
     max_term_width = 100
 )]
 struct Args {
-    /// Use `squash!`: change the commit message that you amend
+    /// Change the commit message that you amend, instead of using the original commit message
     #[clap(short = 's', long = "squash")]
     squash: bool,
     /// The maximum number of commits to show when looking for your merge point
@@ -59,6 +59,7 @@ struct Args {
 
 fn main() {
     let mut args = Args::parse();
+    // if called as git squash set the squash flag to true
     if env::args().next().unwrap().ends_with("squash") {
         args.squash = true
     }
