@@ -48,7 +48,7 @@ You can install the latest version with curl:
 
     curl --proto '=https' --tlsv1.2 -LsSf https://github.com/quodlibetor/git-instafix/releases/latest/download/git-instafix-installer.sh | sh
 
-If you're on MacOS you can use homebrew:
+If you have Homebrew (including linuxbrew) you can install it with:
 
     brew install quodlibetor/git-tools/git-instafix
 
@@ -73,8 +73,9 @@ build, and then copy the binary into your bin dir:
 * [`git-fixup`](https://github.com/keis/git-fixup) is more-or less a pure-shell version of this
   same tool. We have some different features. The big differences between `git-fixup` and
   `git-instafix` are pretty much all surface level, and `git-instafix` is written in Rust which
-  allows for some slightly fancier interactions. It aims to entirely remove dependencies on the
-  `git` binary (right now it's still used for rebase) at which point it _may_ be more reliable.
+  allows for some slightly fancier interactions. `git-instafix` does not depend
+  on the system it's being run on having a git binary, instead using libgit2 for
+  all git interactions.
 
 ## License
 
