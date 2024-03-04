@@ -114,6 +114,57 @@ new
 }
 
 #[test]
+fn stashes_before_rebase() {
+    let td = assert_fs::TempDir::new().unwrap();
+    git_init(&td);
+
+    git_commits(&["a", "b"], &td);
+    git(&["checkout", "-b", "changes"], &td);
+    git(&["branch", "-u", "main"], &td);
+    git_commits(&["target", "d"], &td);
+
+    let log = git_log(&td);
+    assert_eq!(
+        log,
+        "\
+* d HEAD -> changes
+* target
+* b main
+* a
+",
+        "log:\n{}",
+        log
+    );
+
+    td.child("new").touch().unwrap();
+
+    let edited_file = "file_d";
+    td.child(edited_file).write_str("somthing").unwrap();
+
+    git(&["add", "new"], &td);
+    let tracked_changed_files = git_worktree_changed_files(&td);
+    assert_eq!(tracked_changed_files.trim(), edited_file);
+
+    fixup(&td).args(&["-P", "target"]).assert().success();
+
+    let (files, err) = git_changed_files("target", &td);
+
+    assert_eq!(
+        files,
+        "\
+file_target
+new
+",
+        "out: {} err: {}",
+        files,
+        err
+    );
+
+    let popped_stashed_files = git_worktree_changed_files(&td);
+    assert_eq!(popped_stashed_files.trim(), edited_file);
+}
+
+#[test]
 fn test_no_commit_in_range() {
     let td = assert_fs::TempDir::new().unwrap();
     eprintln!("tempdir: {:?}", td.path());
@@ -252,6 +303,10 @@ fn git_changed_files(name: &str, tempdir: &assert_fs::TempDir) -> (String, Strin
         &tempdir,
     );
     (string(out.stdout), string(out.stderr))
+}
+
+fn git_worktree_changed_files(td: &assert_fs::TempDir) -> String {
+    string(git_out(&["diff", "--name-only"], td).stdout)
 }
 
 /// Run git in tempdir with args and panic if theres an error

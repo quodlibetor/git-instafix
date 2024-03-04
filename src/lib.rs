@@ -26,8 +26,19 @@ pub fn instafix(
     let commit_to_amend = select_commit_to_amend(&repo, upstream, max_commits, &message_pattern)?;
     eprintln!("Selected {}", disp(&commit_to_amend));
     do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
+    let needs_stash = worktree_is_dirty(&repo)?;
+    if needs_stash {
+        // TODO: is it reasonable to create a new repo to work around lifetime issues?
+        let mut repo = Repository::open(".")?;
+        let sig = repo.signature()?.clone();
+        repo.stash_save(&sig, "git-instafix stashing changes", None)?;
+    }
     let current_branch = Branch::wrap(repo.head()?);
     do_rebase(&repo, &current_branch, &commit_to_amend, &diff)?;
+    if needs_stash {
+        let mut repo = Repository::open(".")?;
+        repo.stash_pop(0, None)?;
+    }
 
     Ok(())
 }
@@ -251,6 +262,16 @@ fn create_diff(repo: &Repository, require_newline: bool) -> Result<Diff, anyhow:
     };
 
     Ok(diff)
+}
+
+fn worktree_is_dirty(repo: &Repository) -> Result<bool, anyhow::Error> {
+    let head = repo.head()?;
+    let head_tree = head.peel_to_tree()?;
+    let staged_diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
+    let dirty_diff = repo.diff_index_to_workdir(None, None)?;
+    let diffstat = staged_diff.stats()?;
+    let dirty_workdir_stats = dirty_diff.stats()?;
+    Ok(diffstat.files_changed() > 0 || dirty_workdir_stats.files_changed() > 0)
 }
 
 /// Commit the current index as a fixup or squash commit
