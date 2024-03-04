@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.2.1
+
 * Remove last dependency on external git binary, using libgit2 for all git interactions
 * Show backtraces on error if RUST_BACKTRACE=1 is in the environment
 * Correctly stash and unstash changes before the rebase

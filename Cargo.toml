@@ -1,6 +1,6 @@
 [package]
 name = "git-instafix"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Brandon W Maister <quodlibetor@gmail.com>"]
 edition = "2021"
 default-run = "git-instafix"
