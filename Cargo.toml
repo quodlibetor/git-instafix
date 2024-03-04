@@ -16,7 +16,7 @@ license = false
 eula = false
 
 [dependencies]
-anyhow = "1.0.79"
+anyhow = { version = "1.0.79", features = ["backtrace"] }
 clap = { version = "4.5.1", features = ["derive", "env", "wrap_help"] }
 console = "0.15.8"
 dialoguer = "0.11.0"
