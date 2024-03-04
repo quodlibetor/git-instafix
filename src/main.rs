@@ -59,7 +59,6 @@ struct Args {
 
 fn main() {
     let mut args = Args::parse();
-    // if called as git squash set the squash flag to true
     if env::args().next().unwrap().ends_with("squash") {
         args.squash = true
     }

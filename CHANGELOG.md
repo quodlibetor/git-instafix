@@ -1,3 +1,7 @@
+# Unreleased
+
+* Remove last dependency on external git binary, using libgit2 for all git interactions
+
 # Version 0.2.0
 
 * Rename to git-instafix because there are a bunch of existing projects named git-fixup

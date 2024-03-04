@@ -1,16 +1,15 @@
 use std::collections::HashMap;
-use std::process::Command;
 
 use anyhow::{anyhow, bail, Context};
 use console::style;
 use dialoguer::{Confirm, Select};
-use git2::{Branch, Commit, Diff, Object, ObjectType, Oid, Rebase, Repository};
-
-#[derive(Eq, PartialEq, Debug)]
-enum Changes {
-    Staged,
-    Unstaged,
-}
+use git2::{
+    Branch, Commit, Diff, DiffFormat, DiffStatsFormat, Object, ObjectType, Oid, Rebase, Repository,
+};
+use syntect::easy::HighlightLines;
+use syntect::highlighting::ThemeSet;
+use syntect::parsing::SyntaxSet;
+use syntect::util::as_24_bit_terminal_escaped;
 
 pub fn instafix(
     squash: bool,
@@ -220,12 +219,17 @@ fn create_diff(repo: &Repository, require_newline: bool) -> Result<Diff, anyhow:
     let head = repo.head()?;
     let head_tree = head.peel_to_tree()?;
     let staged_diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
+    let dirty_diff = repo.diff_index_to_workdir(None, None)?;
     let diffstat = staged_diff.stats()?;
     let diff = if diffstat.files_changed() == 0 {
-        let diff = repo.diff_index_to_workdir(None, None)?;
-        let dirty_workdir_stats = diff.stats()?;
+        let dirty_workdir_stats = dirty_diff.stats()?;
         if dirty_workdir_stats.files_changed() > 0 {
-            print_diff(Changes::Unstaged)?;
+            let total_change = dirty_workdir_stats.insertions() + dirty_workdir_stats.deletions();
+            if total_change < 50 {
+                native_diff(&dirty_diff)?;
+            } else {
+                print_diffstat("Unstaged", &dirty_diff)?;
+            }
             if !Confirm::new()
                 .with_prompt("Nothing staged, stage and commit everything?")
                 .wait_for_newline(require_newline)
@@ -236,11 +240,13 @@ fn create_diff(repo: &Repository, require_newline: bool) -> Result<Diff, anyhow:
         } else {
             bail!("Nothing staged and no tracked files have any changes");
         }
-        repo.apply(&diff, git2::ApplyLocation::Index, None)?;
-        diff
+        repo.apply(&dirty_diff, git2::ApplyLocation::Index, None)?;
+        // the diff that we return knows whether it's from the index to the
+        // workdir or the HEAD to the index, so now that we've created a new
+        // commit we need a new diff.
+        repo.diff_tree_to_index(Some(&head_tree), None, None)?
     } else {
-        println!("Staged changes:");
-        print_diff(Changes::Staged)?;
+        print_diffstat("Staged", &staged_diff)?;
         staged_diff
     };
 
@@ -355,15 +361,58 @@ fn format_ref(rf: &git2::Reference<'_>) -> Result<String, anyhow::Error> {
     Ok(format!("{} ({})", shorthand, &sha[..10]))
 }
 
-fn print_diff(kind: Changes) -> Result<(), anyhow::Error> {
-    let mut args = vec!["diff", "--stat"];
-    if kind == Changes::Staged {
-        args.push("--cached");
-    }
-    let status = Command::new("git").args(&args).spawn()?.wait()?;
-    if status.success() {
-        Ok(())
+// diff helpers
+
+fn native_diff(diff: &Diff<'_>) -> Result<(), anyhow::Error> {
+    let ss = SyntaxSet::load_defaults_newlines();
+    let ts = ThemeSet::load_defaults();
+    let syntax = ss.find_syntax_by_extension("patch").unwrap();
+    let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+
+    let mut inner_err = None;
+
+    diff.print(DiffFormat::Patch, |_delta, _hunk, line| {
+        let content = std::str::from_utf8(line.content()).unwrap();
+        let origin = line.origin();
+        match origin {
+            '+' | '-' | ' ' => {
+                let diff_line = format!("{origin}{content}");
+                let ranges = match h.highlight_line(&diff_line, &ss) {
+                    Ok(ranges) => ranges,
+                    Err(err) => {
+                        inner_err = Some(err);
+                        return false;
+                    }
+                };
+                let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
+                print!("{}", escaped);
+            }
+            _ => {
+                let ranges = match h.highlight_line(content, &ss) {
+                    Ok(ranges) => ranges,
+                    Err(err) => {
+                        inner_err = Some(err);
+                        return false;
+                    }
+                };
+                let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
+                print!("{}", escaped);
+            }
+        }
+        true
+    })?;
+
+    if let Some(err) = inner_err {
+        Err(err.into())
     } else {
-        bail!("git diff failed")
+        Ok(())
     }
+}
+
+fn print_diffstat(prefix: &str, diff: &Diff<'_>) -> Result<(), anyhow::Error> {
+    let buf = diff.stats()?.to_buf(DiffStatsFormat::FULL, 80)?;
+    let stat = std::str::from_utf8(&buf).context("converting diffstat to utf-8")?;
+    println!("{prefix} changes:\n{stat}");
+
+    Ok(())
 }
