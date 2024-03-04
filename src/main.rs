@@ -72,7 +72,11 @@ fn main() {
         // An empty message means don't display any error message
         let msg = e.to_string();
         if !msg.is_empty() {
-            println!("Error: {:#}", e);
+            if env::var("RUST_BACKTRACE").as_deref() == Ok("1") {
+                println!("Error: {:?}", e);
+            } else {
+                println!("Error: {:#}", e);
+            }
         }
         std::process::exit(1);
     }

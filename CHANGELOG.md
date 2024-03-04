@@ -1,6 +1,7 @@
 # Unreleased
 
 * Remove last dependency on external git binary, using libgit2 for all git interactions
+* Show backtraces on error if RUST_BACKTRACE=1 is in the environment
 
 # Version 0.2.0
 

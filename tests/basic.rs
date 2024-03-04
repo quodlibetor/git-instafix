@@ -116,6 +116,7 @@ new
 #[test]
 fn test_no_commit_in_range() {
     let td = assert_fs::TempDir::new().unwrap();
+    eprintln!("tempdir: {:?}", td.path());
     git_init(&td);
 
     git_commits(&["a", "b", "c", "d"], &td);
@@ -145,9 +146,11 @@ fn test_no_commit_in_range() {
 
     let assertion = fixup(&td).args(&["-P", "b"]).assert().failure();
     let out = string(assertion.get_output().stdout.clone());
+    let expected = "No commit contains the pattern";
     assert!(
-        out.contains("No commit contains the pattern"),
-        "actual: {}",
+        out.contains(expected),
+        "expected: {}\nactual: {}",
+        expected,
         out
     );
 
