@@ -56,6 +56,8 @@ You can also install from this repo with `cargo`:
 
     cargo install --git https://github.com/quodlibetor/git-instafix
 
+Or use Nixpkgs. It's [in there](https://search.nixos.org/packages?channel=unstable&query=git-instafix).
+
 Otherwise, you will need to compile with Rust. Install rust, clone this repo,
 build, and then copy the binary into your bin dir:
 
