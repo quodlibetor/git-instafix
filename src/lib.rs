@@ -43,29 +43,6 @@ pub fn instafix(
     Ok(())
 }
 
-pub fn rebase_onto(onto: &str) -> Result<(), anyhow::Error> {
-    let repo = Repository::open(".")?;
-    let onto = repo
-        .reference_to_annotated_commit(
-            repo.find_branch(onto, git2::BranchType::Local)
-                .context("Chosing parent")?
-                .get(),
-        )
-        .context("creating onto annotated commit")?;
-    let head = repo
-        .reference_to_annotated_commit(&repo.head().context("finding head")?)
-        .context("choosing branch")?;
-    let rebase = &mut repo
-        .rebase(Some(&head), None, Some(&onto), None)
-        .context("creating rebase")?;
-
-    if do_rebase_inner(&repo, rebase, None).is_ok() {
-        rebase.finish(None).context("finishing")?;
-    }
-
-    Ok(())
-}
-
 fn do_rebase(
     repo: &Repository,
     branch: &Branch,
