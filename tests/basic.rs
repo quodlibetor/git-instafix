@@ -268,6 +268,63 @@ new
     assert_eq!(out, expected, "\nactual:\n{}\nexpected:\n{}", out, expected);
 }
 
+#[test]
+fn retarget_branch_target_of_edit() {
+    let td = assert_fs::TempDir::new().unwrap();
+    git_init(&td);
+
+    git_commits(&["a", "b"], &td);
+    git(&["checkout", "-b", "intermediate"], &td);
+    git_commits(&["c", "d", "target"], &td);
+
+    git(&["checkout", "-b", "changes"], &td);
+    git_commits(&["e", "f"], &td);
+
+    let expected = "\
+* f HEAD -> changes
+* e
+* target intermediate
+* d
+* c
+* b main
+* a
+";
+    let out = git_log(&td);
+    assert_eq!(
+        out, expected,
+        "before rebase:\nactual:\n{}\nexpected:\n{}",
+        out, expected
+    );
+
+    td.child("new").touch().unwrap();
+    git(&["add", "new"], &td);
+
+    fixup(&td).args(&["-P", "target"]).assert().success();
+
+    let out = git_log(&td);
+    assert_eq!(
+        out, expected,
+        "after rebase\nactual:\n{}\nexpected:\n{}",
+        out, expected
+    );
+
+    let (files, err) = git_changed_files("target", &td);
+    assert_eq!(
+        files,
+        "\
+file_target
+new
+",
+        "out: {} err: {}",
+        files,
+        err
+    );
+
+    // should be identical to before
+    let out = git_log(&td);
+    assert_eq!(out, expected, "\nactual:\n{}\nexpected:\n{}", out, expected);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // Helpers
 
