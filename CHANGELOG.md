@@ -1,5 +1,7 @@
 # Unreleased
 
+* Correctly retarget branches if the target of the edit is also a branch (#24)
+
 # Version 0.2.1
 
 * Remove last dependency on external git binary, using libgit2 for all git interactions
