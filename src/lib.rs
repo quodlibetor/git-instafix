@@ -58,9 +58,11 @@ fn do_rebase(
         .rebase(Some(&branch_commit), Some(&first_parent), None, None)
         .context("starting rebase")?;
 
-    apply_diff_in_rebase(repo, rebase, diff)?;
+    let mut branches = RepoBranches::for_repo(repo)?;
 
-    match do_rebase_inner(repo, rebase, fixup_message) {
+    apply_diff_in_rebase(repo, rebase, diff, &mut branches)?;
+
+    match do_rebase_inner(repo, rebase, fixup_message, branches) {
         Ok(_) => {
             rebase.finish(None)?;
             Ok(())
@@ -81,6 +83,7 @@ fn apply_diff_in_rebase(
     repo: &Repository,
     rebase: &mut Rebase,
     diff: &Diff,
+    branches: &mut RepoBranches,
 ) -> Result<(), anyhow::Error> {
     match rebase.next() {
         Some(ref res) => {
@@ -94,11 +97,11 @@ fn apply_diff_in_rebase(
             // TODO: Support squash amends
 
             let rewrit_id = target_commit.amend(None, None, None, None, None, Some(&tree))?;
-            repo.reset(
-                &repo.find_object(rewrit_id, None)?,
-                git2::ResetType::Soft,
-                None,
-            )?;
+            let rewrit_object = repo.find_object(rewrit_id, None)?;
+            let rewrit_commit_id = repo.find_commit(rewrit_object.id())?.id();
+            branches.retarget_branches(target_commit.id(), rewrit_commit_id, rebase)?;
+
+            repo.reset(&rewrit_object, git2::ResetType::Soft, None)?;
         }
         None => bail!("Unable to start rebase: no first step in rebase"),
     };
@@ -110,15 +113,9 @@ fn do_rebase_inner(
     repo: &Repository,
     rebase: &mut Rebase,
     fixup_message: Option<&str>,
+    mut branches: RepoBranches,
 ) -> Result<(), anyhow::Error> {
     let sig = repo.signature()?;
-
-    let mut branches: HashMap<Oid, Branch> = HashMap::new();
-    for (branch, _type) in repo.branches(Some(git2::BranchType::Local))?.flatten() {
-        let oid = branch.get().peel_to_commit()?.id();
-        // TODO: handle multiple branches pointing to the same commit
-        branches.insert(oid, branch);
-    }
 
     while let Some(ref res) = rebase.next() {
         use git2::RebaseOperationType::*;
@@ -130,15 +127,7 @@ fn do_rebase_inner(
                 let message = commit.message();
                 if message.is_some() && message != fixup_message {
                     let new_id = rebase.commit(None, &sig, None)?;
-                    if let Some(branch) = branches.get_mut(&commit.id()) {
-                        // Don't retarget the last branch, rebase.finish does that for us
-                        // TODO: handle multiple branches
-                        if rebase.operation_current() != Some(rebase.len() - 1) {
-                            branch
-                                .get_mut()
-                                .set_target(new_id, "git-instafix retarget historical branch")?;
-                        }
-                    }
+                    branches.retarget_branches(commit.id(), new_id, rebase)?;
                 }
             }
             Some(Fixup) | Some(Squash) | Some(Exec) | Some(Edit) | Some(Reword) => {
@@ -150,6 +139,39 @@ fn do_rebase_inner(
     }
 
     Ok(())
+}
+
+struct RepoBranches<'a>(HashMap<Oid, Branch<'a>>);
+
+impl<'a> RepoBranches<'a> {
+    fn for_repo(repo: &'a Repository) -> Result<RepoBranches<'a>, anyhow::Error> {
+        let mut branches: HashMap<Oid, Branch> = HashMap::new();
+        for (branch, _type) in repo.branches(Some(git2::BranchType::Local))?.flatten() {
+            let oid = branch.get().peel_to_commit()?.id();
+            // TODO: handle multiple branches pointing to the same commit
+            branches.insert(oid, branch);
+        }
+        Ok(RepoBranches(branches))
+    }
+
+    /// Move branches whos commits have moved
+    fn retarget_branches(
+        &mut self,
+        original_commit: Oid,
+        target_commit: Oid,
+        rebase: &mut Rebase<'_>,
+    ) -> Result<(), anyhow::Error> {
+        if let Some(branch) = self.0.get_mut(&original_commit) {
+            // Don't retarget the last branch, rebase.finish does that for us
+            // TODO: handle multiple branches
+            if rebase.operation_current() != Some(rebase.len() - 1) {
+                branch
+                    .get_mut()
+                    .set_target(target_commit, "git-instafix retarget historical branch")?;
+            }
+        }
+        Ok(())
+    }
 }
 
 fn commit_parent<'a>(commit: &'a Commit) -> Result<Commit<'a>, anyhow::Error> {
