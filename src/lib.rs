@@ -4,7 +4,8 @@ use anyhow::{anyhow, bail, Context};
 use console::style;
 use dialoguer::{Confirm, Select};
 use git2::{
-    Branch, BranchType, Commit, Diff, DiffFormat, DiffStatsFormat, Object, Oid, Rebase, Repository,
+    AnnotatedCommit, Branch, BranchType, Commit, Diff, DiffFormat, DiffStatsFormat, Object, Oid,
+    Rebase, Repository,
 };
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
@@ -64,7 +65,10 @@ fn do_rebase(
 
     let mut branches = RepoBranches::for_repo(repo)?;
 
-    apply_diff_in_rebase(repo, rebase, diff, &mut branches)?;
+    if let Err(e) = apply_diff_in_rebase(repo, rebase, diff, &mut branches) {
+        print_help_and_abort_rebase(rebase, &first_parent).context("aborting rebase")?;
+        return Err(e);
+    }
 
     match do_rebase_inner(repo, rebase, fixup_message, branches) {
         Ok(_) => {
@@ -72,15 +76,24 @@ fn do_rebase(
             Ok(())
         }
         Err(e) => {
-            eprintln!("Aborting rebase, please apply it manualy via");
-            eprintln!(
-                "    git rebase --interactive --autosquash {}~",
-                first_parent.id()
-            );
-            rebase.abort()?;
+            print_help_and_abort_rebase(rebase, &first_parent).context("aborting rebase")?;
             Err(e)
         }
     }
+}
+
+fn print_help_and_abort_rebase(
+    rebase: &mut Rebase,
+    first_parent: &AnnotatedCommit,
+) -> Result<(), git2::Error> {
+    eprintln!("Aborting rebase, your changes are in the head commit.");
+    eprintln!("You can apply it manually via:");
+    eprintln!(
+        "    git rebase --interactive --autosquash {}~",
+        first_parent.id()
+    );
+    rebase.abort()?;
+    Ok(())
 }
 
 fn apply_diff_in_rebase(
