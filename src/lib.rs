@@ -4,12 +4,14 @@ use anyhow::{anyhow, bail, Context};
 use console::style;
 use dialoguer::{Confirm, Select};
 use git2::{
-    Branch, Commit, Diff, DiffFormat, DiffStatsFormat, Object, ObjectType, Oid, Rebase, Repository,
+    Branch, BranchType, Commit, Diff, DiffFormat, DiffStatsFormat, Object, Oid, Rebase, Repository,
 };
 use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
 use syntect::util::as_24_bit_terminal_escaped;
+
+const DEFAULT_UPSTREAM_BRANCHES: &[&str] = &["main", "master", "develop", "trunk"];
 
 pub fn instafix(
     squash: bool,
@@ -18,14 +20,16 @@ pub fn instafix(
     upstream_branch_name: Option<&str>,
     require_newline: bool,
 ) -> Result<(), anyhow::Error> {
-    let repo = Repository::open(".")?;
-    let diff = create_diff(&repo, require_newline)?;
+    let repo = Repository::open(".").context("opening repo")?;
+    let diff = create_diff(&repo, require_newline).context("creating diff")?;
     let head = repo.head().context("finding head commit")?;
     let head_branch = Branch::wrap(head);
-    let upstream = get_upstream(&repo, &head_branch, upstream_branch_name)?;
-    let commit_to_amend = select_commit_to_amend(&repo, upstream, max_commits, &message_pattern)?;
+    let upstream =
+        get_merge_base(&repo, &head_branch, upstream_branch_name).context("creating merge base")?;
+    let commit_to_amend = select_commit_to_amend(&repo, upstream, max_commits, &message_pattern)
+        .context("selecting commit to amend")?;
     eprintln!("Selected {}", disp(&commit_to_amend));
-    do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash)?;
+    do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash).context("doing fixup commit")?;
     let needs_stash = worktree_is_dirty(&repo)?;
     if needs_stash {
         // TODO: is it reasonable to create a new repo to work around lifetime issues?
@@ -190,24 +194,21 @@ fn disp(commit: &Commit) -> String {
     )
 }
 
-fn get_upstream<'a>(
+fn get_merge_base<'a>(
     repo: &'a Repository,
     head_branch: &'a Branch,
     upstream_name: Option<&str>,
 ) -> Result<Option<Object<'a>>, anyhow::Error> {
-    let upstream = if let Some(upstream_name) = upstream_name {
-        let branch = repo
-            .branches(None)?
-            .filter_map(|branch| branch.ok().map(|(b, _type)| b))
-            .find(|b| {
-                b.name()
-                    .map(|n| n.expect("valid utf8 branchname") == upstream_name)
-                    .unwrap_or(false)
-            })
-            .ok_or_else(|| anyhow!("cannot find branch with name {:?}", upstream_name))?;
-        branch.into_reference().peel(ObjectType::Commit)?
+    let upstream = if let Some(explicit_upstream_name) = upstream_name {
+        let branch = repo.find_branch(explicit_upstream_name, BranchType::Local)?;
+        branch.into_reference().peel_to_commit()?
+    } else if let Some(branch) = DEFAULT_UPSTREAM_BRANCHES
+        .iter()
+        .find_map(|b| repo.find_branch(b, BranchType::Local).ok())
+    {
+        branch.into_reference().peel_to_commit()?
     } else if let Ok(upstream) = head_branch.upstream() {
-        upstream.into_reference().peel(ObjectType::Commit)?
+        upstream.into_reference().peel_to_commit()?
     } else {
         return Ok(None);
     };
@@ -335,6 +336,8 @@ fn select_commit_to_amend<'a>(
         })
         .collect();
     if let Some(message_pattern) = message_pattern.as_ref() {
+        let first = commit_id_and_summary(&commits, commits.len() - 1);
+        let last = commit_id_and_summary(&commits, 0);
         commits
             .into_iter()
             .find(|commit| {
@@ -343,7 +346,13 @@ fn select_commit_to_amend<'a>(
                     .map(|s| s.contains(message_pattern))
                     .unwrap_or(false)
             })
-            .ok_or_else(|| anyhow::anyhow!("No commit contains the pattern in its summary"))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No commit contains the pattern in its summary between {}..{}",
+                    first,
+                    last
+                )
+            })
     } else {
         let rev_aliases = commits
             .iter()
@@ -373,6 +382,20 @@ fn select_commit_to_amend<'a>(
         let selected = Select::new().items(&rev_aliases).default(0).interact();
         Ok(repo.find_commit(commits[selected?].id())?)
     }
+}
+
+fn commit_id_and_summary(commits: &[Commit<'_>], idx: usize) -> String {
+    let first = commits
+        .get(idx)
+        .map(|c| {
+            format!(
+                "{} ({})",
+                &c.id().to_string()[..10],
+                c.summary().unwrap_or("<unknown>")
+            )
+        })
+        .unwrap_or_else(|| "<unknown>".into());
+    first
 }
 
 fn format_ref(rf: &git2::Reference<'_>) -> Result<String, anyhow::Error> {
