@@ -20,14 +20,13 @@ fn test_can_compile() {
 }
 
 #[test]
-fn test_straightforward() {
+fn straightforward() {
     let td = assert_fs::TempDir::new().unwrap();
     git_init(&td);
 
     git_file_commit("a", &td);
     git_file_commit("b", &td);
     git(&["checkout", "-b", "changes", "HEAD~"], &td);
-    git(&["branch", "-u", "main"], &td);
     for n in &["c", "d", "e"] {
         git_file_commit(&n, &td);
     }
@@ -69,6 +68,47 @@ new
         files,
         err
     );
+}
+
+#[test]
+fn uses_merge_base_for_all_defaults() {
+    for branch in ["main", "develop", "trunk", "master"] {
+        eprintln!("testing branch {branch}");
+        let td = assert_fs::TempDir::new().unwrap();
+        git_init_default_branch_name(branch, &td);
+
+        git_commits(&["a", "b", "c", "d"], &td);
+        git(&["checkout", "-b", "changes", ":/c"], &td);
+        git_commits(&["f", "g"], &td);
+
+        let expected = format!(
+            "\
+* g HEAD -> changes
+* f
+| * d {branch}
+|/
+* c
+* b
+* a
+"
+        );
+        let actual = git_log(&td);
+        assert_eq!(
+            expected, actual,
+            "expected:\n{}\nactual:\n{}",
+            expected, actual
+        );
+
+        // commits *before* the merge base of a default branch don't get found by
+        // default
+        td.child("new").touch().unwrap();
+        git(&["add", "new"], &td);
+        fixup(&td).args(&["-P", "b"]).assert().failure();
+        // commits *after* the merge base of a default branch *do* get found by default
+        git(&["reset", "HEAD~"], &td);
+        git(&["add", "new"], &td);
+        fixup(&td).args(&["-P", "f"]).assert().success();
+    }
 }
 
 #[test]
@@ -335,7 +375,11 @@ fn git_commits(ids: &[&str], tempdir: &assert_fs::TempDir) {
 }
 
 fn git_init(tempdir: &assert_fs::TempDir) {
-    git(&["init", "--initial-branch=main"], &tempdir);
+    git_init_default_branch_name("main", tempdir)
+}
+
+fn git_init_default_branch_name(name: &str, tempdir: &assert_fs::TempDir) {
+    git(&["init", "--initial-branch", name], &tempdir);
     git(&["config", "user.email", "nobody@nowhere.com"], &tempdir);
     git(&["config", "user.name", "nobody"], &tempdir);
 }
@@ -403,6 +447,7 @@ fn git_inner(args: &[&str], tempdir: &assert_fs::TempDir) -> Command {
 /// Get something that can get args added to it
 fn fixup(dir: &assert_fs::TempDir) -> Command {
     let mut c = Command::cargo_bin("git-instafix").unwrap();
-    c.current_dir(&dir.path());
+    c.current_dir(&dir.path())
+        .env_remove("GIT_INSTAFIX_UPSTREAM");
     c
 }
