@@ -1,6 +1,8 @@
 # Unreleased
 
 * Correctly retarget branches if the target of the edit is also a branch (#24)
+* Check if main, master, develop, or trunk exist as reasonable default upstream branches
+* Leave the repo in a less confusing state if the edit target is a conflict
 
 # Version 0.2.1
 
