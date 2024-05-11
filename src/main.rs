@@ -49,7 +49,7 @@ struct Args {
     #[clap(short = 'P', long)]
     commit_message_pattern: Option<String>,
 
-    #[clap(long, env = UPSTREAM_VAR)]
+    #[clap(short = 'u', long, env = UPSTREAM_VAR)]
     default_upstream_branch: Option<String>,
 
     /// Require a newline when confirming y/n questions
