@@ -28,7 +28,7 @@ fn straightforward() {
     git_file_commit("b", &td);
     git(&["checkout", "-b", "changes", "HEAD~"], &td);
     for n in &["c", "d", "e"] {
-        git_file_commit(&n, &td);
+        git_file_commit(n, &td);
     }
 
     let out = git_log(&td);
@@ -49,7 +49,7 @@ fn straightforward() {
     td.child("new").touch().unwrap();
     git(&["add", "new"], &td);
 
-    fixup(&td).args(&["-P", "d"]).output().unwrap();
+    fixup(&td).args(["-P", "d"]).output().unwrap();
 
     let shown = git_out(
         &["diff-tree", "--no-commit-id", "--name-only", "-r", ":/d"],
@@ -103,11 +103,11 @@ fn uses_merge_base_for_all_defaults() {
         // default
         td.child("new").touch().unwrap();
         git(&["add", "new"], &td);
-        fixup(&td).args(&["-P", "b"]).assert().failure();
+        fixup(&td).args(["-P", "b"]).assert().failure();
         // commits *after* the merge base of a default branch *do* get found by default
         git(&["reset", "HEAD~"], &td);
         git(&["add", "new"], &td);
-        fixup(&td).args(&["-P", "f"]).assert().success();
+        fixup(&td).args(["-P", "f"]).assert().success();
     }
 }
 
@@ -137,7 +137,7 @@ fn simple_straightline_commits() {
     td.child("new").touch().unwrap();
     git(&["add", "new"], &td);
 
-    fixup(&td).args(&["-P", "target"]).assert().success();
+    fixup(&td).args(["-P", "target"]).assert().success();
 
     let (files, err) = git_changed_files("target", &td);
 
@@ -185,7 +185,7 @@ fn stashes_before_rebase() {
     let tracked_changed_files = git_worktree_changed_files(&td);
     assert_eq!(tracked_changed_files.trim(), edited_file);
 
-    fixup(&td).args(&["-P", "target"]).assert().success();
+    fixup(&td).args(["-P", "target"]).assert().success();
 
     let (files, err) = git_changed_files("target", &td);
 
@@ -235,7 +235,7 @@ fn test_no_commit_in_range() {
     td.child("new").touch().unwrap();
     git(&["add", "new"], &td);
 
-    let assertion = fixup(&td).args(&["-P", "b"]).assert().failure();
+    let assertion = fixup(&td).args(["-P", "b"]).assert().failure();
     let out = string(assertion.get_output().stdout.clone());
     let expected = "No commit contains the pattern";
     assert!(
@@ -245,7 +245,7 @@ fn test_no_commit_in_range() {
         out
     );
 
-    fixup(&td).args(&["-P", "target"]).assert().success();
+    fixup(&td).args(["-P", "target"]).assert().success();
 
     let (files, err) = git_changed_files("target", &td);
 
@@ -288,7 +288,7 @@ fn retarget_branches_in_range() {
     td.child("new").touch().unwrap();
     git(&["add", "new"], &td);
 
-    fixup(&td).args(&["-P", "target"]).assert().success();
+    fixup(&td).args(["-P", "target"]).assert().success();
 
     let (files, err) = git_changed_files("target", &td);
 
@@ -339,7 +339,7 @@ fn retarget_branch_target_of_edit() {
     td.child("new").touch().unwrap();
     git(&["add", "new"], &td);
 
-    fixup(&td).args(&["-P", "target"]).assert().success();
+    fixup(&td).args(["-P", "target"]).assert().success();
 
     let out = git_log(&td);
     assert_eq!(
@@ -370,7 +370,7 @@ new
 
 fn git_commits(ids: &[&str], tempdir: &assert_fs::TempDir) {
     for n in ids {
-        git_file_commit(n, &tempdir);
+        git_file_commit(n, tempdir);
     }
 }
 
@@ -379,16 +379,16 @@ fn git_init(tempdir: &assert_fs::TempDir) {
 }
 
 fn git_init_default_branch_name(name: &str, tempdir: &assert_fs::TempDir) {
-    git(&["init", "--initial-branch", name], &tempdir);
-    git(&["config", "user.email", "nobody@nowhere.com"], &tempdir);
-    git(&["config", "user.name", "nobody"], &tempdir);
+    git(&["init", "--initial-branch", name], tempdir);
+    git(&["config", "user.email", "nobody@nowhere.com"], tempdir);
+    git(&["config", "user.name", "nobody"], tempdir);
 }
 
 /// Create a file and commit it with a mesage that is just the name of the file
 fn git_file_commit(name: &str, tempdir: &assert_fs::TempDir) {
     tempdir.child(format!("file_{}", name)).touch().unwrap();
-    git(&["add", "-A"], &tempdir);
-    git(&["commit", "-m", &name], &tempdir);
+    git(&["add", "-A"], tempdir);
+    git(&["commit", "-m", &name], tempdir);
 }
 
 /// Get the git shown output for the target commit
@@ -401,7 +401,7 @@ fn git_changed_files(name: &str, tempdir: &assert_fs::TempDir) -> (String, Strin
             "-r",
             &format!(":/{}", name),
         ],
-        &tempdir,
+        tempdir,
     );
     (string(out.stdout), string(out.stderr))
 }
@@ -421,7 +421,7 @@ fn git_out(args: &[&str], tempdir: &assert_fs::TempDir) -> Output {
 
 fn git_log(tempdir: &assert_fs::TempDir) -> String {
     let mut s = String::from_utf8(
-        git_inner(&["log", "--all", "--format=%s %D", "--graph"], &tempdir)
+        git_inner(&["log", "--all", "--format=%s %D", "--graph"], tempdir)
             .output()
             .unwrap()
             .stdout,
@@ -430,7 +430,7 @@ fn git_log(tempdir: &assert_fs::TempDir) -> String {
     .lines()
     .map(|l| l.trim_end())
     .join("\n");
-    s.push_str("\n");
+    s.push('\n');
     s
 }
 
@@ -440,14 +440,14 @@ fn string(from: Vec<u8>) -> String {
 
 fn git_inner(args: &[&str], tempdir: &assert_fs::TempDir) -> Command {
     let mut cmd = Command::new("git");
-    cmd.args(args).current_dir(&tempdir.path());
+    cmd.args(args).current_dir(tempdir.path());
     cmd
 }
 
 /// Get something that can get args added to it
 fn fixup(dir: &assert_fs::TempDir) -> Command {
     let mut c = Command::cargo_bin("git-instafix").unwrap();
-    c.current_dir(&dir.path())
+    c.current_dir(dir.path())
         .env_remove("GIT_INSTAFIX_UPSTREAM");
     c
 }
