@@ -17,23 +17,35 @@ use terminal_size::{terminal_size, Height};
 
 const DEFAULT_UPSTREAM_BRANCHES: &[&str] = &["main", "master", "develop", "trunk"];
 
-pub fn instafix(
-    squash: bool,
-    max_commits: usize,
-    message_pattern: Option<String>,
-    upstream_branch_name: Option<&str>,
-    require_newline: bool,
-) -> Result<(), anyhow::Error> {
+pub struct Config {
+    /// Change the commit message that you amend, instead of using the original commit message
+    pub squash: bool,
+    /// The maximum number of commits to show when looking for your merge point
+    pub max_commits: usize,
+    /// Specify a commit to ammend by the subject line of the commit
+    pub commit_message_pattern: Option<String>,
+    pub default_upstream_branch: Option<String>,
+    /// Require a newline when confirming y/n questions
+    pub require_newline: bool,
+}
+
+pub fn instafix(c: Config) -> Result<(), anyhow::Error> {
     let repo = Repository::open(".").context("opening repo")?;
-    let diff = create_diff(&repo, require_newline).context("creating diff")?;
+    let diff = create_diff(&repo, c.require_newline).context("creating diff")?;
     let head = repo.head().context("finding head commit")?;
     let head_branch = Branch::wrap(head);
-    let upstream =
-        get_merge_base(&repo, &head_branch, upstream_branch_name).context("creating merge base")?;
-    let commit_to_amend = select_commit_to_amend(&repo, upstream, max_commits, &message_pattern)
-        .context("selecting commit to amend")?;
+    let upstream = get_merge_base(&repo, &head_branch, c.default_upstream_branch.as_deref())
+        .context("creating merge base")?;
+    let commit_to_amend = select_commit_to_amend(
+        &repo,
+        upstream,
+        c.max_commits,
+        c.commit_message_pattern.as_deref(),
+    )
+    .context("selecting commit to amend")?;
     eprintln!("Selected {}", disp(&commit_to_amend));
-    do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash).context("doing fixup commit")?;
+    do_fixup_commit(&repo, &head_branch, &commit_to_amend, c.squash)
+        .context("doing fixup commit")?;
     let needs_stash = worktree_is_dirty(&repo)?;
     if needs_stash {
         // TODO: is it reasonable to create a new repo to work around lifetime issues?
@@ -322,7 +334,7 @@ fn select_commit_to_amend<'a>(
     repo: &'a Repository,
     upstream: Option<Object<'a>>,
     max_commits: usize,
-    message_pattern: &Option<String>,
+    message_pattern: Option<&str>,
 ) -> Result<Commit<'a>, anyhow::Error> {
     let mut walker = repo.revwalk()?;
     walker.push_head()?;

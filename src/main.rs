@@ -16,8 +16,9 @@ use std::env;
 
 use clap::Parser;
 
+const MAX_COMMITS_VAR: &str = "GIT_INSTAFIX_MAX_COMMITS";
 const UPSTREAM_VAR: &str = "GIT_INSTAFIX_UPSTREAM";
-const REQUIRE_NEWLINE: &str = "GIT_INSTAFIX_REQUIRE_NEWLINE";
+const REQUIRE_NEWLINE_VAR: &str = "GIT_INSTAFIX_REQUIRE_NEWLINE";
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -39,36 +40,38 @@ When run with no arguments this will:
 )]
 struct Args {
     /// Change the commit message that you amend, instead of using the original commit message
-    #[clap(short = 's', long = "squash")]
-    squash: bool,
+    #[clap(short = 's', long, hide = true)]
+    squash: Option<bool>,
     /// The maximum number of commits to show when looking for your merge point
-    #[clap(short = 'm', long = "max-commits", default_value = "15")]
-    max_commits: usize,
+    ///
+    /// [gitconfig: instafix.max-commits]
+    #[clap(short = 'm', long = "max-commits", env = MAX_COMMITS_VAR)]
+    max_commits: Option<usize>,
 
     /// Specify a commit to ammend by the subject line of the commit
     #[clap(short = 'P', long)]
     commit_message_pattern: Option<String>,
 
+    /// The branch to not go past when looking for your merge point
+    ///
+    /// [gitconfig: instafix.default-upstream-branch]
     #[clap(short = 'u', long, env = UPSTREAM_VAR)]
     default_upstream_branch: Option<String>,
 
     /// Require a newline when confirming y/n questions
-    #[clap(long, env = REQUIRE_NEWLINE)]
-    require_newline: bool,
+    ///
+    /// [gitconfig: instafix.require-newline]
+    #[clap(long, env = REQUIRE_NEWLINE_VAR)]
+    require_newline: Option<bool>,
 }
 
 fn main() {
     let mut args = Args::parse();
     if env::args().next().unwrap().ends_with("squash") {
-        args.squash = true
+        args.squash = Some(true)
     }
-    if let Err(e) = git_instafix::instafix(
-        args.squash,
-        args.max_commits,
-        args.commit_message_pattern,
-        args.default_upstream_branch.as_deref(),
-        args.require_newline,
-    ) {
+    let config = args_to_config_using_git_config(args).unwrap();
+    if let Err(e) = git_instafix::instafix(config) {
         // An empty message means don't display any error message
         let msg = e.to_string();
         if !msg.is_empty() {
@@ -80,4 +83,25 @@ fn main() {
         }
         std::process::exit(1);
     }
+}
+
+fn args_to_config_using_git_config(args: Args) -> Result<git_instafix::Config, anyhow::Error> {
+    let mut cfg = git2::Config::open_default()?;
+    let repo = git2::Repository::discover(".")?;
+    cfg.add_file(&repo.path().join("config"), git2::ConfigLevel::Local, false)?;
+    Ok(git_instafix::Config {
+        squash: args
+            .squash
+            .unwrap_or_else(|| cfg.get_bool("instafix.squash").unwrap_or(false)),
+        max_commits: args
+            .max_commits
+            .unwrap_or_else(|| cfg.get_i32("instafix.max-commits").unwrap_or(15) as usize),
+        commit_message_pattern: args.commit_message_pattern,
+        default_upstream_branch: args
+            .default_upstream_branch
+            .or_else(|| cfg.get_string("instafix.default-upstream-branch").ok()),
+        require_newline: args
+            .require_newline
+            .unwrap_or_else(|| cfg.get_bool("instafix.require-newline").unwrap_or(false)),
+    })
 }
