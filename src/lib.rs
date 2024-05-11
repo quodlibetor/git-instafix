@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::Write as _;
 
 use anyhow::{anyhow, bail, Context};
 use console::style;
@@ -11,26 +12,43 @@ use syntect::easy::HighlightLines;
 use syntect::highlighting::ThemeSet;
 use syntect::parsing::SyntaxSet;
 use syntect::util::as_24_bit_terminal_escaped;
+use termcolor::{ColorChoice, StandardStream, WriteColor as _};
+use terminal_size::{terminal_size, Height};
 
 const DEFAULT_UPSTREAM_BRANCHES: &[&str] = &["main", "master", "develop", "trunk"];
+pub const DEFAULT_THEME: &str = "base16-ocean.dark";
 
-pub fn instafix(
-    squash: bool,
-    max_commits: usize,
-    message_pattern: Option<String>,
-    upstream_branch_name: Option<&str>,
-    require_newline: bool,
-) -> Result<(), anyhow::Error> {
+pub struct Config {
+    /// Change the commit message that you amend, instead of using the original commit message
+    pub squash: bool,
+    /// The maximum number of commits to show when looking for your merge point
+    pub max_commits: usize,
+    /// Specify a commit to ammend by the subject line of the commit
+    pub commit_message_pattern: Option<String>,
+    pub default_upstream_branch: Option<String>,
+    /// Require a newline when confirming y/n questions
+    pub require_newline: bool,
+    /// Which theme to use
+    pub theme: String,
+}
+
+pub fn instafix(c: Config) -> Result<(), anyhow::Error> {
     let repo = Repository::open(".").context("opening repo")?;
-    let diff = create_diff(&repo, require_newline).context("creating diff")?;
+    let diff = create_diff(&repo, &c.theme, c.require_newline).context("creating diff")?;
     let head = repo.head().context("finding head commit")?;
     let head_branch = Branch::wrap(head);
-    let upstream =
-        get_merge_base(&repo, &head_branch, upstream_branch_name).context("creating merge base")?;
-    let commit_to_amend = select_commit_to_amend(&repo, upstream, max_commits, &message_pattern)
-        .context("selecting commit to amend")?;
+    let upstream = get_merge_base(&repo, &head_branch, c.default_upstream_branch.as_deref())
+        .context("creating merge base")?;
+    let commit_to_amend = select_commit_to_amend(
+        &repo,
+        upstream,
+        c.max_commits,
+        c.commit_message_pattern.as_deref(),
+    )
+    .context("selecting commit to amend")?;
     eprintln!("Selected {}", disp(&commit_to_amend));
-    do_fixup_commit(&repo, &head_branch, &commit_to_amend, squash).context("doing fixup commit")?;
+    do_fixup_commit(&repo, &head_branch, &commit_to_amend, c.squash)
+        .context("doing fixup commit")?;
     let needs_stash = worktree_is_dirty(&repo)?;
     if needs_stash {
         // TODO: is it reasonable to create a new repo to work around lifetime issues?
@@ -239,7 +257,11 @@ fn get_merge_base<'a>(
 }
 
 /// Get a diff either from the index or the diff from the index to the working tree
-fn create_diff(repo: &Repository, require_newline: bool) -> Result<Diff, anyhow::Error> {
+fn create_diff<'a>(
+    repo: &'a Repository,
+    theme: &str,
+    require_newline: bool,
+) -> Result<Diff<'a>, anyhow::Error> {
     let head = repo.head()?;
     let head_tree = head.peel_to_tree()?;
     let staged_diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
@@ -248,11 +270,18 @@ fn create_diff(repo: &Repository, require_newline: bool) -> Result<Diff, anyhow:
     let diff = if diffstat.files_changed() == 0 {
         let dirty_workdir_stats = dirty_diff.stats()?;
         if dirty_workdir_stats.files_changed() > 0 {
+            let Height(h) = terminal_size().map(|(_w, h)| h).unwrap_or(Height(24));
+            let cutoff_height = (h - 5) as usize; // give some room for the prompt
             let total_change = dirty_workdir_stats.insertions() + dirty_workdir_stats.deletions();
-            if total_change < 50 {
-                native_diff(&dirty_diff)?;
-            } else {
+            if total_change >= cutoff_height {
                 print_diffstat("Unstaged", &dirty_diff)?;
+            } else {
+                let diff_lines = native_diff(&dirty_diff, theme)?;
+                if diff_lines.len() >= cutoff_height {
+                    print_diffstat("Unstaged", &dirty_diff)?;
+                } else {
+                    print_diff_lines(&diff_lines)?;
+                }
             }
             if !Confirm::new()
                 .with_prompt("Nothing staged, stage and commit everything?")
@@ -312,7 +341,7 @@ fn select_commit_to_amend<'a>(
     repo: &'a Repository,
     upstream: Option<Object<'a>>,
     max_commits: usize,
-    message_pattern: &Option<String>,
+    message_pattern: Option<&str>,
 ) -> Result<Commit<'a>, anyhow::Error> {
     let mut walker = repo.revwalk()?;
     walker.push_head()?;
@@ -417,15 +446,29 @@ fn format_ref(rf: &git2::Reference<'_>) -> Result<String, anyhow::Error> {
     Ok(format!("{} ({})", shorthand, &sha[..10]))
 }
 
+/// A vec of all built-in theme names
+pub fn print_themes() {
+    println!("Available themes:");
+    for theme in ThemeSet::load_defaults().themes.keys() {
+        println!("  {}", theme);
+    }
+}
+
 // diff helpers
 
-fn native_diff(diff: &Diff<'_>) -> Result<(), anyhow::Error> {
+fn native_diff(diff: &Diff<'_>, theme: &str) -> Result<Vec<String>, anyhow::Error> {
     let ss = SyntaxSet::load_defaults_newlines();
     let ts = ThemeSet::load_defaults();
     let syntax = ss.find_syntax_by_extension("patch").unwrap();
-    let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+    let mut h = HighlightLines::new(
+        syntax,
+        ts.themes
+            .get(theme)
+            .unwrap_or_else(|| &ts.themes[DEFAULT_THEME]),
+    );
 
     let mut inner_err = None;
+    let mut diff_lines = Vec::new();
 
     diff.print(DiffFormat::Patch, |_delta, _hunk, line| {
         let content = std::str::from_utf8(line.content()).unwrap();
@@ -441,7 +484,7 @@ fn native_diff(diff: &Diff<'_>) -> Result<(), anyhow::Error> {
                     }
                 };
                 let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
-                print!("{}", escaped);
+                diff_lines.push(escaped);
             }
             _ => {
                 let ranges = match h.highlight_line(content, &ss) {
@@ -452,7 +495,7 @@ fn native_diff(diff: &Diff<'_>) -> Result<(), anyhow::Error> {
                     }
                 };
                 let escaped = as_24_bit_terminal_escaped(&ranges[..], true);
-                print!("{}", escaped);
+                diff_lines.push(escaped);
             }
         }
         true
@@ -461,8 +504,18 @@ fn native_diff(diff: &Diff<'_>) -> Result<(), anyhow::Error> {
     if let Some(err) = inner_err {
         Err(err.into())
     } else {
-        Ok(())
+        Ok(diff_lines)
     }
+}
+
+fn print_diff_lines(diff_lines: &[String]) -> Result<(), anyhow::Error> {
+    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+    for line in diff_lines {
+        write!(&mut stdout, "{}", line)?;
+    }
+    stdout.reset()?;
+    writeln!(&mut stdout)?;
+    Ok(())
 }
 
 fn print_diffstat(prefix: &str, diff: &Diff<'_>) -> Result<(), anyhow::Error> {

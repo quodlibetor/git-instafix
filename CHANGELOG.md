@@ -1,5 +1,11 @@
 # Unreleased
 
+* Allow setting the diff theme
+* Read configuration from git config as well as arguments and env vars
+* Choose whether to display full diff or just a diffstat based on terminal
+  height instead of a constant
+* Add -u alias for --default-upstream-branch
+
 # Version 0.2.2
 
 * Correctly retarget branches if the target of the edit is also a branch (#24)
