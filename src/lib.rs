@@ -16,6 +16,7 @@ use termcolor::{ColorChoice, StandardStream, WriteColor as _};
 use terminal_size::{terminal_size, Height};
 
 const DEFAULT_UPSTREAM_BRANCHES: &[&str] = &["main", "master", "develop", "trunk"];
+pub const DEFAULT_THEME: &str = "base16-ocean.dark";
 
 pub struct Config {
     /// Change the commit message that you amend, instead of using the original commit message
@@ -27,11 +28,13 @@ pub struct Config {
     pub default_upstream_branch: Option<String>,
     /// Require a newline when confirming y/n questions
     pub require_newline: bool,
+    /// Which theme to use
+    pub theme: String,
 }
 
 pub fn instafix(c: Config) -> Result<(), anyhow::Error> {
     let repo = Repository::open(".").context("opening repo")?;
-    let diff = create_diff(&repo, c.require_newline).context("creating diff")?;
+    let diff = create_diff(&repo, &c.theme, c.require_newline).context("creating diff")?;
     let head = repo.head().context("finding head commit")?;
     let head_branch = Branch::wrap(head);
     let upstream = get_merge_base(&repo, &head_branch, c.default_upstream_branch.as_deref())
@@ -254,7 +257,11 @@ fn get_merge_base<'a>(
 }
 
 /// Get a diff either from the index or the diff from the index to the working tree
-fn create_diff(repo: &Repository, require_newline: bool) -> Result<Diff, anyhow::Error> {
+fn create_diff<'a>(
+    repo: &'a Repository,
+    theme: &str,
+    require_newline: bool,
+) -> Result<Diff<'a>, anyhow::Error> {
     let head = repo.head()?;
     let head_tree = head.peel_to_tree()?;
     let staged_diff = repo.diff_tree_to_index(Some(&head_tree), None, None)?;
@@ -269,7 +276,7 @@ fn create_diff(repo: &Repository, require_newline: bool) -> Result<Diff, anyhow:
             if total_change >= cutoff_height {
                 print_diffstat("Unstaged", &dirty_diff)?;
             } else {
-                let diff_lines = native_diff(&dirty_diff)?;
+                let diff_lines = native_diff(&dirty_diff, theme)?;
                 if diff_lines.len() >= cutoff_height {
                     print_diffstat("Unstaged", &dirty_diff)?;
                 } else {
@@ -439,13 +446,26 @@ fn format_ref(rf: &git2::Reference<'_>) -> Result<String, anyhow::Error> {
     Ok(format!("{} ({})", shorthand, &sha[..10]))
 }
 
+/// A vec of all built-in theme names
+pub fn print_themes() {
+    println!("Available themes:");
+    for theme in ThemeSet::load_defaults().themes.keys() {
+        println!("  {}", theme);
+    }
+}
+
 // diff helpers
 
-fn native_diff(diff: &Diff<'_>) -> Result<Vec<String>, anyhow::Error> {
+fn native_diff(diff: &Diff<'_>, theme: &str) -> Result<Vec<String>, anyhow::Error> {
     let ss = SyntaxSet::load_defaults_newlines();
     let ts = ThemeSet::load_defaults();
     let syntax = ss.find_syntax_by_extension("patch").unwrap();
-    let mut h = HighlightLines::new(syntax, &ts.themes["base16-ocean.dark"]);
+    let mut h = HighlightLines::new(
+        syntax,
+        ts.themes
+            .get(theme)
+            .unwrap_or_else(|| &ts.themes[DEFAULT_THEME]),
+    );
 
     let mut inner_err = None;
     let mut diff_lines = Vec::new();

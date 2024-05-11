@@ -15,10 +15,12 @@
 use std::env;
 
 use clap::Parser;
+use git_instafix::DEFAULT_THEME;
 
 const MAX_COMMITS_VAR: &str = "GIT_INSTAFIX_MAX_COMMITS";
 const UPSTREAM_VAR: &str = "GIT_INSTAFIX_UPSTREAM";
 const REQUIRE_NEWLINE_VAR: &str = "GIT_INSTAFIX_REQUIRE_NEWLINE";
+const THEME_VAR: &str = "GIT_INSTAFIX_THEME";
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -63,12 +65,24 @@ struct Args {
     /// [gitconfig: instafix.require-newline]
     #[clap(long, env = REQUIRE_NEWLINE_VAR)]
     require_newline: Option<bool>,
+
+    /// Show the possible color themes for output
+    #[clap(long)]
+    help_themes: bool,
+
+    /// Use this theme
+    #[clap(long, env = THEME_VAR)]
+    theme: Option<String>,
 }
 
 fn main() {
     let mut args = Args::parse();
     if env::args().next().unwrap().ends_with("squash") {
         args.squash = Some(true)
+    }
+    if args.help_themes {
+        git_instafix::print_themes();
+        return;
     }
     let config = args_to_config_using_git_config(args).unwrap();
     if let Err(e) = git_instafix::instafix(config) {
@@ -103,5 +117,9 @@ fn args_to_config_using_git_config(args: Args) -> Result<git_instafix::Config, a
         require_newline: args
             .require_newline
             .unwrap_or_else(|| cfg.get_bool("instafix.require-newline").unwrap_or(false)),
+        theme: args.theme.unwrap_or_else(|| {
+            cfg.get_string("instafix.theme")
+                .unwrap_or_else(|_| DEFAULT_THEME.to_string())
+        }),
     })
 }
