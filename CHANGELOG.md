@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.2.3
+
 * Allow setting the diff theme
 * Read configuration from git config as well as arguments and env vars
 * Choose whether to display full diff or just a diffstat based on terminal
