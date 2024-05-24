@@ -176,15 +176,14 @@ fn do_rebase_inner(
     Ok(())
 }
 
-struct RepoBranches<'a>(HashMap<Oid, Branch<'a>>);
+struct RepoBranches<'a>(HashMap<Oid, Vec<Branch<'a>>>);
 
 impl<'a> RepoBranches<'a> {
     fn for_repo(repo: &'a Repository) -> Result<RepoBranches<'a>, anyhow::Error> {
-        let mut branches: HashMap<Oid, Branch> = HashMap::new();
+        let mut branches: HashMap<Oid, Vec<Branch>> = HashMap::new();
         for (branch, _type) in repo.branches(Some(git2::BranchType::Local))?.flatten() {
             let oid = branch.get().peel_to_commit()?.id();
-            // TODO: handle multiple branches pointing to the same commit
-            branches.insert(oid, branch);
+            branches.entry(oid).or_default().push(branch);
         }
         Ok(RepoBranches(branches))
     }
@@ -196,13 +195,14 @@ impl<'a> RepoBranches<'a> {
         target_commit: Oid,
         rebase: &mut Rebase<'_>,
     ) -> Result<(), anyhow::Error> {
-        if let Some(branch) = self.0.get_mut(&original_commit) {
+        if let Some(branches) = self.0.get_mut(&original_commit) {
             // Don't retarget the last branch, rebase.finish does that for us
-            // TODO: handle multiple branches
             if rebase.operation_current() != Some(rebase.len() - 1) {
-                branch
-                    .get_mut()
-                    .set_target(target_commit, "git-instafix retarget historical branch")?;
+                for branch in branches.iter_mut() {
+                    branch
+                        .get_mut()
+                        .set_target(target_commit, "git-instafix retarget historical branch")?;
+                }
             }
         }
         Ok(())

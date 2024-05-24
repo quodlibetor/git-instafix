@@ -1,5 +1,7 @@
 # Unreleased
 
+* Retarget multiple branches pointing at the same commit
+
 # Version 0.2.3
 
 * Allow setting the diff theme

@@ -269,6 +269,7 @@ fn retarget_branches_in_range() {
     git_commits(&["a", "b"], &td);
     git(&["checkout", "-b", "intermediate"], &td);
     git_commits(&["target", "c", "d"], &td);
+    git(&["checkout", "-b", "points-at-intermediate"], &td);
 
     git(&["checkout", "-b", "changes"], &td);
     git_commits(&["e", "f"], &td);
@@ -276,7 +277,7 @@ fn retarget_branches_in_range() {
     let expected = "\
 * f HEAD -> changes
 * e
-* d intermediate
+* d points-at-intermediate, intermediate
 * c
 * target
 * b main
