@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.2.4
+
 * Retarget multiple branches pointing at the same commit
 
 # Version 0.2.3
