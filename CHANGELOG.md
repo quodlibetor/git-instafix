@@ -2,7 +2,8 @@
 
 # Version 0.2.4
 
-* Retarget multiple branches pointing at the same commit
+* Retarget multiple branches pointing at the same commit, eg:
+  > updated branch my-cool-branch: deadbeef -> c0ffee
 
 # Version 0.2.3
 
