@@ -1,5 +1,7 @@
 # Unreleased
 
+* Correctly find git repos in parent dirs of CWD
+
 # Version 0.2.4
 
 * Retarget multiple branches pointing at the same commit, eg:

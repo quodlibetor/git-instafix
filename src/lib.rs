@@ -33,7 +33,7 @@ pub struct Config {
 }
 
 pub fn instafix(c: Config) -> Result<(), anyhow::Error> {
-    let repo = Repository::open(".").context("opening repo")?;
+    let repo = Repository::open_from_env().context("opening repo")?;
     let diff = create_diff(&repo, &c.theme, c.require_newline).context("creating diff")?;
     let head = repo.head().context("finding head commit")?;
     let head_branch = Branch::wrap(head);
@@ -52,7 +52,7 @@ pub fn instafix(c: Config) -> Result<(), anyhow::Error> {
     let needs_stash = worktree_is_dirty(&repo)?;
     if needs_stash {
         // TODO: is it reasonable to create a new repo to work around lifetime issues?
-        let mut repo = Repository::open(".")?;
+        let mut repo = Repository::open_from_env()?;
         let sig = repo.signature()?.clone();
         repo.stash_save(&sig, "git-instafix stashing changes", None)?;
     }
