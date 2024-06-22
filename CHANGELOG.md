@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.2.5
+
 * Correctly find git repos in parent dirs of CWD
 * Enable experimental github release attestations in cargo-dist
 
