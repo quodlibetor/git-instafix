@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.2.6
+
 * Fix and improve the experience of working with a main-only workflow.
   - Provide a tailored error message if your current branch is the selected upstream branch
   - Work correctly with explicitly-defined remote upstream branches.
