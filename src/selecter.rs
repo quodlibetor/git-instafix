@@ -2,33 +2,55 @@
 
 use std::collections::HashMap;
 
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use console::style;
 use dialoguer::Select;
 use git2::BranchType;
 use git2::Commit;
-use git2::Object;
 use git2::Oid;
 use git2::{Branch, Repository};
 
+use crate::config;
 use crate::format_ref;
+
+pub(crate) struct CommitSelection<'a> {
+    pub commit: Commit<'a>,
+    pub branch: Branch<'a>,
+}
 
 pub(crate) fn select_commit_to_amend<'a>(
     repo: &'a Repository,
-    upstream: Option<Object<'a>>,
+    upstream: Option<CommitSelection>,
     max_commits: usize,
     message_pattern: Option<&str>,
 ) -> Result<Commit<'a>, anyhow::Error> {
     let mut walker = repo.revwalk()?;
     walker.push_head()?;
     let commits = if let Some(upstream) = upstream.as_ref() {
-        let upstream_oid = upstream.id();
-        walker
+        let upstream_oid = upstream.commit.id();
+        let commits = walker
             .flatten()
             .take_while(|rev| *rev != upstream_oid)
             .take(max_commits)
             .map(|rev| repo.find_commit(rev))
-            .collect::<Result<Vec<_>, _>>()?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let head = repo.head()?;
+        let current_branch_name = head
+            .shorthand()
+            .ok_or_else(|| anyhow!("HEAD is not a branch"))?;
+        if repo.head()?.peel_to_commit()?.id() == upstream.commit.id()
+            && current_branch_name == upstream.branch.name().unwrap().unwrap()
+        {
+            let upstream_setting = config::UPSTREAM_SETTING;
+            bail!(
+                "HEAD is already pointing at a common upstream branch\n\
+            If you don't create branches for your work consider setting upstream to a remote ref:\n\
+            \n    \
+                git config {upstream_setting} origin/{current_branch_name}"
+            )
+        }
+        commits
     } else {
         walker
             .flatten()
@@ -40,7 +62,9 @@ pub(crate) fn select_commit_to_amend<'a>(
         bail!(
             "No commits between {} and {:?}",
             format_ref(&repo.head()?)?,
-            upstream.map(|u| u.id()).unwrap()
+            upstream
+                .map(|u| u.commit.id().to_string())
+                .unwrap_or_else(|| "<no upstream>".to_string())
         );
     }
     let branches: HashMap<Oid, String> = repo
@@ -106,17 +130,27 @@ pub(crate) fn get_merge_base<'a>(
     repo: &'a Repository,
     head_branch: &'a Branch,
     upstream_name: Option<&str>,
-) -> Result<Option<Object<'a>>, anyhow::Error> {
-    let upstream = if let Some(explicit_upstream_name) = upstream_name {
-        let branch = repo.find_branch(explicit_upstream_name, BranchType::Local)?;
-        branch.into_reference().peel_to_commit()?
-    } else if let Some(branch) = crate::config::DEFAULT_UPSTREAM_BRANCHES
-        .iter()
-        .find_map(|b| repo.find_branch(b, BranchType::Local).ok())
-    {
-        branch.into_reference().peel_to_commit()?
+) -> Result<Option<CommitSelection<'a>>, anyhow::Error> {
+    let (upstream, branch) = if let Some(explicit_upstream_name) = upstream_name {
+        let mut bt = BranchType::Local;
+        let branch = repo
+            .find_branch(explicit_upstream_name, BranchType::Local)
+            .or_else(|_| {
+                bt = BranchType::Remote;
+                repo.find_branch(explicit_upstream_name, BranchType::Remote)
+            })?;
+        let b2 = repo.find_branch(explicit_upstream_name, bt)?;
+        (branch.into_reference().peel_to_commit()?, b2)
+    } else if let Some(branch) = find_default_upstream_branch(repo) {
+        (
+            branch.into_reference().peel_to_commit()?,
+            find_default_upstream_branch(repo).unwrap(),
+        )
     } else if let Ok(upstream) = head_branch.upstream() {
-        upstream.into_reference().peel_to_commit()?
+        (
+            upstream.into_reference().peel_to_commit()?,
+            head_branch.upstream().unwrap(),
+        )
     } else {
         return Ok(None);
     };
@@ -125,12 +159,15 @@ pub(crate) fn get_merge_base<'a>(
         head_branch
             .get()
             .target()
-            .expect("all branches should ahve a target"),
+            .expect("all branches should have a target"),
         upstream.id(),
     )?;
     let commit = repo.find_object(mb, None).unwrap();
 
-    Ok(Some(commit))
+    Ok(Some(CommitSelection {
+        commit: commit.peel_to_commit()?,
+        branch,
+    }))
 }
 
 pub(crate) fn commit_id_and_summary(commits: &[Commit<'_>], idx: usize) -> String {
@@ -145,4 +182,11 @@ pub(crate) fn commit_id_and_summary(commits: &[Commit<'_>], idx: usize) -> Strin
         })
         .unwrap_or_else(|| "<unknown>".into());
     first
+}
+
+/// Check if any of the `config::DEFAULT_UPSTREAM_BRANCHES` exist in the repository
+fn find_default_upstream_branch(repo: &Repository) -> Option<Branch> {
+    crate::config::DEFAULT_UPSTREAM_BRANCHES
+        .iter()
+        .find_map(|b| repo.find_branch(b, BranchType::Local).ok())
 }
