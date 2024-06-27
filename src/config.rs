@@ -4,9 +4,13 @@ use clap::Parser;
 
 // Env vars that provide defaults for args
 const MAX_COMMITS_VAR: &str = "GIT_INSTAFIX_MAX_COMMITS";
+const MAX_COMMITS_SETTING: &str = "instafix.max-commits";
 const UPSTREAM_VAR: &str = "GIT_INSTAFIX_UPSTREAM";
+pub const UPSTREAM_SETTING: &str = "instafix.default-upstream-branch";
 const REQUIRE_NEWLINE_VAR: &str = "GIT_INSTAFIX_REQUIRE_NEWLINE";
+const REQUIRE_NEWLINE_SETTING: &str = "instafix.require-newline";
 const THEME_VAR: &str = "GIT_INSTAFIX_THEME";
+const THEME_SETTING: &str = "instafix.theme";
 
 // Other defaults
 pub(crate) const DEFAULT_UPSTREAM_BRANCHES: &[&str] = &["main", "master", "develop", "trunk"];
@@ -101,17 +105,17 @@ fn args_to_config_using_git_config(args: Args) -> Result<Config, anyhow::Error> 
             .unwrap_or_else(|| cfg.get_bool("instafix.squash").unwrap_or(false)),
         max_commits: args
             .max_commits
-            .unwrap_or_else(|| cfg.get_i32("instafix.max-commits").unwrap_or(15) as usize),
+            .unwrap_or_else(|| cfg.get_i32(MAX_COMMITS_SETTING).unwrap_or(15) as usize),
         commit_message_pattern: args.commit_message_pattern,
         default_upstream_branch: args
             .default_upstream_branch
-            .or_else(|| cfg.get_string("instafix.default-upstream-branch").ok()),
+            .or_else(|| cfg.get_string(UPSTREAM_SETTING).ok()),
         require_newline: args
             .require_newline
-            .unwrap_or_else(|| cfg.get_bool("instafix.require-newline").unwrap_or(false)),
+            .unwrap_or_else(|| cfg.get_bool(REQUIRE_NEWLINE_SETTING).unwrap_or(false)),
         help_themes: args.help_themes,
         theme: args.theme.unwrap_or_else(|| {
-            cfg.get_string("instafix.theme")
+            cfg.get_string(THEME_SETTING)
                 .unwrap_or_else(|_| DEFAULT_THEME.to_string())
         }),
     })

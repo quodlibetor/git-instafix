@@ -1,5 +1,9 @@
 # Unreleased
 
+* Fix and improve the experience of working with a main-only workflow.
+  - Provide a tailored error message if your current branch is the selected upstream branch
+  - Work correctly with explicitly-defined remote upstream branches.
+
 # Version 0.2.5
 
 * Correctly find git repos in parent dirs of CWD
