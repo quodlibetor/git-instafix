@@ -5,17 +5,14 @@ use std::collections::HashMap;
 use anyhow::{anyhow, bail};
 use console::style;
 use dialoguer::Select;
-use git2::BranchType;
-use git2::Commit;
-use git2::Oid;
-use git2::{Branch, Repository};
+use git2::{Branch, BranchType, Commit, Oid, Reference, Repository};
 
 use crate::config;
 use crate::format_ref;
 
 pub(crate) struct CommitSelection<'a> {
     pub commit: Commit<'a>,
-    pub branch: Branch<'a>,
+    pub reference: Reference<'a>,
 }
 
 pub(crate) fn select_commit_to_amend<'a>(
@@ -38,9 +35,9 @@ pub(crate) fn select_commit_to_amend<'a>(
         let head = repo.head()?;
         let current_branch_name = head
             .shorthand()
-            .ok_or_else(|| anyhow!("HEAD is not a branch"))?;
+            .ok_or_else(|| anyhow!("HEAD's name is invalid utf-8"))?;
         if repo.head()?.peel_to_commit()?.id() == upstream.commit.id()
-            && current_branch_name == upstream.branch.name().unwrap().unwrap()
+            && current_branch_name == upstream.reference.name().unwrap()
         {
             let upstream_setting = config::UPSTREAM_SETTING;
             bail!(
@@ -132,24 +129,18 @@ pub(crate) fn get_merge_base<'a>(
     upstream_name: Option<&str>,
 ) -> Result<Option<CommitSelection<'a>>, anyhow::Error> {
     let (upstream, branch) = if let Some(explicit_upstream_name) = upstream_name {
-        let mut bt = BranchType::Local;
-        let branch = repo
-            .find_branch(explicit_upstream_name, BranchType::Local)
-            .or_else(|_| {
-                bt = BranchType::Remote;
-                repo.find_branch(explicit_upstream_name, BranchType::Remote)
-            })?;
-        let b2 = repo.find_branch(explicit_upstream_name, bt)?;
-        (branch.into_reference().peel_to_commit()?, b2)
+        let reference = repo.resolve_reference_from_short_name(explicit_upstream_name)?;
+        let r2 = repo.resolve_reference_from_short_name(explicit_upstream_name)?;
+        (reference.peel_to_commit()?, r2)
     } else if let Some(branch) = find_default_upstream_branch(repo) {
         (
             branch.into_reference().peel_to_commit()?,
-            find_default_upstream_branch(repo).unwrap(),
+            find_default_upstream_branch(repo).unwrap().into_reference(),
         )
     } else if let Ok(upstream) = head_branch.upstream() {
         (
             upstream.into_reference().peel_to_commit()?,
-            head_branch.upstream().unwrap(),
+            head_branch.upstream().unwrap().into_reference(),
         )
     } else {
         return Ok(None);
@@ -166,7 +157,7 @@ pub(crate) fn get_merge_base<'a>(
 
     Ok(Some(CommitSelection {
         commit: commit.peel_to_commit()?,
-        branch,
+        reference: branch,
     }))
 }
 

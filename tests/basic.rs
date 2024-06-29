@@ -154,6 +154,127 @@ new
 }
 
 #[test]
+fn simple_straightline_tag_and_reference() {
+    let td = assert_fs::TempDir::new().unwrap();
+    git_init(&td);
+
+    let base = "v0.1.0";
+
+    git_commits(&["a", "b"], &td);
+    git(&["tag", base], &td);
+    git(&["checkout", "-b", "changes"], &td);
+    git_commits(&["target", "d"], &td);
+
+    let log = git_log(&td);
+    assert_eq!(
+        log,
+        "\
+* d HEAD -> changes
+* target
+* b tag: v0.1.0, main
+* a
+",
+        "log:\n{}",
+        log
+    );
+
+    td.child("new").touch().unwrap();
+    git(&["add", "new"], &td);
+
+    fixup(&td)
+        .args(["-P", "target", "-u", base])
+        .assert()
+        .success();
+
+    let (files, err) = git_changed_files("target", &td);
+
+    assert_eq!(
+        files,
+        "\
+file_target
+new
+",
+        "out: {} err: {}",
+        files,
+        err
+    );
+
+    // also check that we can use the full refspec definition
+
+    td.child("new-full-ref").touch().unwrap();
+    git(&["add", "new-full-ref"], &td);
+    fixup(&td)
+        .args(["-P", "target", "-u", &format!("refs/tags/{base}")])
+        .unwrap();
+
+    let (files, err) = git_changed_files("target", &td);
+    assert_eq!(
+        files,
+        "\
+file_target
+new
+new-full-ref
+",
+        "out: {} err: {}",
+        files,
+        err
+    );
+}
+
+#[test]
+fn simple_straightline_remote_branch() {
+    let remote_td = assert_fs::TempDir::new().unwrap();
+    git_init(&remote_td);
+    git_commits(&["a", "b"], &remote_td);
+
+    let td = assert_fs::TempDir::new().unwrap();
+    git_init(&td);
+    let remote_path = &remote_td
+        .path()
+        .as_os_str()
+        .to_owned()
+        .into_string()
+        .unwrap();
+    git(&["remote", "add", "origin", remote_path], &td);
+    git(&["pull", "origin", "main:main"], &td);
+    git_commits(&["target", "d"], &td);
+
+    let log = git_log(&td);
+    assert_eq!(
+        log,
+        "\
+* d HEAD -> main
+* target
+* b origin/main
+* a
+",
+        "log:\n{}",
+        log
+    );
+
+    td.child("new").touch().unwrap();
+    git(&["add", "new"], &td);
+
+    fixup(&td)
+        .args(["-P", "target", "-u", "origin/main"])
+        .assert()
+        .success();
+
+    let (files, err) = git_changed_files("target", &td);
+
+    assert_eq!(
+        files,
+        "\
+file_target
+new
+",
+        "out: {} err: {}",
+        files,
+        err
+    );
+}
+
+#[test]
 fn stashes_before_rebase() {
     let td = assert_fs::TempDir::new().unwrap();
     git_init(&td);
@@ -389,7 +510,7 @@ fn git_init_default_branch_name(name: &str, tempdir: &assert_fs::TempDir) {
 fn git_file_commit(name: &str, tempdir: &assert_fs::TempDir) {
     tempdir.child(format!("file_{}", name)).touch().unwrap();
     git(&["add", "-A"], tempdir);
-    git(&["commit", "-m", &name], tempdir);
+    git(&["commit", "-m", name], tempdir);
 }
 
 /// Get the git shown output for the target commit
