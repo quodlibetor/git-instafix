@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.2.7
+
 - Support arbitrary refs (i.e. tags like `v0.1.0` and full refspecs
   like `ref/pull/ID`) as the merge-base selector.
 
